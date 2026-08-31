@@ -12,7 +12,9 @@ import { HowItWorks } from "@/components/HowItWorks";
 import { UseCases } from "@/components/UseCases";
 import { Compare } from "@/components/Compare";
 import { FAQ } from "@/components/FAQ";
+import { RelayStatusBadge } from "@/components/RelayStatusBadge";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
+import { useRelayStatus } from "@/hooks/useRelayStatus";
 import { generateRoomCode } from "@/lib/room-code";
 import { formatBytes, formatSpeed } from "@/lib/format";
 
@@ -21,6 +23,8 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const roomId = useMemo(() => (file ? generateRoomCode() : null), [file]);
+  const relay = useRelayStatus();
+  const relayReady = relay.status === "connected";
 
   const { status, progress, completed, errorMessage, setFile: pushFile } = usePeerTransfer(
     roomId,
@@ -51,6 +55,10 @@ export default function Home() {
           className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[48rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-200/40 to-emerald-200/40 blur-3xl"
         />
         <div className="relative mx-auto flex w-full max-w-4xl flex-col items-center px-6 pb-16 pt-16 sm:px-10 sm:pt-20">
+          <div className="mb-4">
+            <RelayStatusBadge status={relay.status} latencyMs={relay.latencyMs} />
+          </div>
+
           <span className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-sm font-medium text-emerald-700">
             <Sparkles className="h-4 w-4" />
             No signup · No size limit · 100% free forever
@@ -70,7 +78,15 @@ export default function Home() {
           <div className="mt-10 w-full max-w-md">
             {!file && (
               <>
-                <DropZone onFile={handleFile} />
+                <DropZone
+                  onFile={handleFile}
+                  disabled={!relayReady}
+                  disabledMessage={
+                    relay.status === "waking"
+                      ? "Waking secure P2P signaling relay…"
+                      : "Reconnecting to relay…"
+                  }
+                />
                 <div className="mt-8 flex items-center gap-3 text-sm text-zinc-400">
                   <div className="h-px flex-1 bg-zinc-200" />
                   have a code?
