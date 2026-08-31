@@ -129,6 +129,15 @@ function attachSignaling(wss) {
           break;
         }
 
+        case "ping": {
+          // App-level ping used by the frontend to measure round-trip
+          // latency and to confirm the relay has actually finished waking
+          // up from a free-tier cold start (not just that the TCP/HTTP
+          // upgrade succeeded).
+          send(ws, { type: "pong", ts: msg.ts });
+          break;
+        }
+
         default:
           send(ws, { type: "error", message: `Unknown message type: ${type}` });
       }
@@ -144,7 +153,7 @@ function attachSignaling(wss) {
       ws.isAlive = false;
       ws.ping();
     });
-  }, 30000);
+  }, 25000);
 
   wss.on("close", () => clearInterval(heartbeat));
 
