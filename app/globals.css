@@ -21,3 +21,37 @@ body {
 details summary::-webkit-details-marker {
   display: none;
 }
+
+/* Subtle dot-grid texture used behind hero/section backgrounds instead
+   of flat white, for depth without any image assets. */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, rgba(24, 24, 27, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@keyframes flow-right {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-flow {
+  animation: flow-right 1s linear infinite;
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 4s ease-in-out infinite;
+}

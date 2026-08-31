@@ -35,12 +35,14 @@ export function FAQ() {
         {FAQ_ITEMS.map((item) => (
           <details
             key={item.q}
-            className="group rounded-xl border border-zinc-200 bg-white p-5 open:border-cyan-500/40"
+            className="group rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition-shadow open:border-emerald-400/50 open:shadow-md"
           >
             <summary className="cursor-pointer list-none text-base font-medium text-zinc-800 marker:content-none">
               <span className="flex items-center justify-between">
                 {item.q}
-                <span className="text-zinc-400 transition-transform group-open:rotate-45">+</span>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 transition-transform group-open:rotate-45 group-open:bg-emerald-100 group-open:text-emerald-600">
+                  +
+                </span>
               </span>
             </summary>
             <p className="mt-3 text-sm leading-relaxed text-zinc-500">{item.a}</p>

@@ -14,8 +14,8 @@ export function QRPanel({ roomId, shareUrl }: { roomId: string; shareUrl: string
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-6">
-      <div className="rounded-xl border border-zinc-200 bg-white p-3">
+    <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-gradient-to-b from-zinc-50 to-white p-6 shadow-sm">
+      <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-inner">
         <QRCodeSVG value={shareUrl} size={160} bgColor="#ffffff" fgColor="#18181b" />
       </div>
       <div className="text-center">

@@ -39,19 +39,25 @@ export function DropZone({
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
-      className={`flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
+      className={`flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
         disabled
           ? "cursor-not-allowed border-zinc-200 bg-zinc-50 opacity-60"
           : isDragging
-            ? "cursor-pointer border-cyan-500 bg-cyan-50"
-            : "cursor-pointer border-zinc-300 bg-zinc-50 hover:border-zinc-400"
+            ? "cursor-pointer scale-[1.01] border-cyan-500 bg-cyan-50"
+            : "cursor-pointer border-zinc-300 bg-zinc-50 hover:border-emerald-400 hover:bg-emerald-50/40"
       }`}
     >
-      {disabled ? (
-        <Loader2 className="h-10 w-10 animate-spin text-zinc-400" />
-      ) : (
-        <UploadCloud className="h-10 w-10 text-emerald-600" />
-      )}
+      <div
+        className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${
+          disabled ? "bg-zinc-200" : "bg-gradient-to-br from-emerald-500 to-cyan-500 shadow-md"
+        }`}
+      >
+        {disabled ? (
+          <Loader2 className="h-7 w-7 animate-spin text-zinc-400" />
+        ) : (
+          <UploadCloud className="h-7 w-7 text-white" />
+        )}
+      </div>
       <p className="text-sm font-medium text-zinc-800">
         {disabled ? (
           disabledMessage

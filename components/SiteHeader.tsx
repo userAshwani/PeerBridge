@@ -3,7 +3,7 @@ import { LOGO_URL, PARENT_SITE_URL, SITE_NAME } from "@/lib/constants";
 
 export function SiteHeader() {
   return (
-    <header className="w-full border-b border-zinc-200 bg-white/80 backdrop-blur">
+    <header className="sticky top-0 z-50 w-full border-b border-zinc-200 bg-white/80 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-3 sm:px-10">
         <Link href="/" className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -21,12 +21,14 @@ export function Compare() {
         entirely, so none of those limits apply.
       </p>
 
-      <div className="mt-12 overflow-x-auto rounded-2xl border border-zinc-200">
+      <div className="mt-12 overflow-x-auto rounded-2xl border border-zinc-200 shadow-sm">
         <table className="w-full min-w-[640px] border-collapse text-left text-base">
           <thead>
-            <tr className="border-b border-zinc-200 bg-zinc-50">
+            <tr className="border-b border-zinc-200">
               <th className="px-6 py-4 font-medium text-zinc-500">&nbsp;</th>
-              <th className="px-6 py-4 font-semibold text-emerald-700">PeerBridge</th>
+              <th className="bg-gradient-to-r from-emerald-50 to-cyan-50 px-6 py-4 font-semibold text-emerald-700">
+                PeerBridge
+              </th>
               <th className="px-6 py-4 font-medium text-zinc-500">Typical cloud uploader</th>
             </tr>
           </thead>
@@ -34,7 +36,7 @@ export function Compare() {
             {ROWS.map(([label, ours, theirs]) => (
               <tr key={label} className="border-b border-zinc-100 last:border-0">
                 <td className="px-6 py-5 align-top font-medium text-zinc-700">{label}</td>
-                <td className="px-6 py-5 align-top text-zinc-700">
+                <td className="bg-emerald-50/30 px-6 py-5 align-top text-zinc-700">
                   <span className="flex items-start gap-2">
                     <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                     {ours}
