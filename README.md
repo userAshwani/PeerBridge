@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PeerBridge
 
-## Getting Started
+Zero-cloud, ephemeral peer-to-peer file transfer. Files never touch a
+server — they stream directly between two browsers over an encrypted
+WebRTC `RTCDataChannel`. The server only relays room codes and WebRTC
+signaling (SDP/ICE), and exposes a `/health` endpoint for uptime
+monitoring.
 
-First, run the development server:
+Live at **[transfer.ashwanitiwari.com](https://transfer.ashwanitiwari.com)**, a free tool from [ashwanitiwari.com](https://ashwanitiwari.com).
+
+## Stack
+
+- **Next.js 16** (App Router, TypeScript, Tailwind CSS 4)
+- **[server.js](server.js)** — a custom Node server that runs the Next.js
+  app, a `ws`-based WebSocket signaling server (`/ws`), and a health
+  check (`/health`, `/ping`, `/api/health`) all on one HTTP server/port
+- **WebRTC `RTCDataChannel`** — 64KB chunked transfer with
+  `bufferedAmount` backpressure and SHA-256 (Web Crypto API) integrity
+  verification (see [lib/webrtc.ts](lib/webrtc.ts))
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The dev server runs
+`server.js`, so the `/ws` signaling endpoint is available immediately —
+open the app in two tabs to test a real transfer locally.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Path | What it is |
+| --- | --- |
+| `server.js` / `server/signaling.js` | Custom Node server + WebSocket room/SDP/ICE relay |
+| `lib/webrtc.ts` | The `PeerTransferSession` engine: chunking, backpressure, SHA-256 |
+| `lib/signaling-client.ts` | Browser-side WebSocket client for the signaling protocol |
+| `hooks/usePeerTransfer.ts` | React hook wrapping a transfer session (sender or receiver) |
+| `hooks/useRelayStatus.ts` | Tracks signaling-relay connectivity/latency, surfaces cold starts |
+| `app/page.tsx` | Sender UI: dropzone, room code, QR pairing |
+| `app/join/[roomId]/page.tsx` | Receiver UI: accept/decline, progress, verified download |
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run dev     # node server.js (dev mode)
+npm run build   # next build
+npm start       # NODE_ENV=production node server.js
+npm run lint    # eslint
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+See [DEPLOY.md](DEPLOY.md) for two paths:
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Render (free tier)** — no server to manage, custom domain + free
+  SSL, step-by-step from repo connection to DNS.
+- **VPS with Docker + Nginx** — [Dockerfile](Dockerfile),
+  [docker-compose.yml](docker-compose.yml), and an
+  [Nginx virtual host config](deploy/nginx/transfer.ashwanitiwari.com.conf)
+  with Certbot instructions.
