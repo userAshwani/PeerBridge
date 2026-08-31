@@ -2,21 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Zap, ServerCrash, ArrowRight, FileIcon, RotateCcw } from "lucide-react";
+import { ArrowRight, FileIcon, RotateCcw, Sparkles } from "lucide-react";
 import { DropZone } from "@/components/DropZone";
 import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
+import { StatsBar } from "@/components/StatsBar";
+import { HowItWorks } from "@/components/HowItWorks";
+import { UseCases } from "@/components/UseCases";
+import { Compare } from "@/components/Compare";
 import { FAQ } from "@/components/FAQ";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
 import { generateRoomCode } from "@/lib/room-code";
 import { formatBytes, formatSpeed } from "@/lib/format";
-
-const FEATURES = [
-  { icon: ShieldCheck, title: "End-to-end encrypted", desc: "DTLS-secured RTCDataChannel, mandated by the WebRTC spec." },
-  { icon: ServerCrash, title: "Zero cloud storage", desc: "Files never touch a server — only your two browsers see the bytes." },
-  { icon: Zap, title: "No size limits", desc: "Chunked streaming with backpressure handles multi-gigabyte files." },
-];
 
 export default function Home() {
   const router = useRouter();
@@ -47,98 +45,120 @@ export default function Home() {
 
   return (
     <main className="flex flex-1 flex-col bg-white text-zinc-900">
-      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center px-4 py-16">
-        <h1 className="text-center text-4xl font-extrabold tracking-tight sm:text-5xl">
-          Peer<span className="text-emerald-600">Bridge</span>
-        </h1>
-        <p className="mt-4 max-w-xl text-center text-zinc-500">
-          Send files directly between devices over an encrypted WebRTC connection.
-          No uploads, no size limits, no account — nothing ever touches a server.
-        </p>
+      <section className="relative overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[48rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-200/40 to-emerald-200/40 blur-3xl"
+        />
+        <div className="relative mx-auto flex w-full max-w-3xl flex-col items-center px-4 pb-16 pt-16 sm:pt-20">
+          <span className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+            <Sparkles className="h-3.5 w-3.5" />
+            No signup · No size limit · 100% free forever
+          </span>
 
-        <div className="mt-10 w-full max-w-md">
-          {!file && (
-            <>
-              <DropZone onFile={handleFile} />
-              <div className="mt-8 flex items-center gap-3 text-xs text-zinc-400">
-                <div className="h-px flex-1 bg-zinc-200" />
-                have a code?
-                <div className="h-px flex-1 bg-zinc-200" />
-              </div>
-              <form
-                className="mt-4 flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (joinCode.trim()) router.push(`/join/${joinCode.trim().toUpperCase()}`);
-                }}
-              >
-                <input
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                  placeholder="ABC123"
-                  maxLength={6}
-                  className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-center font-mono uppercase tracking-widest text-zinc-900 outline-none focus:border-cyan-500"
-                />
-                <button
-                  type="submit"
-                  className="flex items-center gap-1 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          <h1 className="text-center text-4xl font-extrabold tracking-tight sm:text-5xl">
+            Send huge files instantly —{" "}
+            <span className="text-emerald-600">no cloud, no limits</span>
+          </h1>
+          <p className="mt-4 max-w-xl text-center text-zinc-500">
+            PeerBridge sends photos, videos, documents, and any other file directly
+            between two devices over an encrypted WebRTC connection. Unlike cloud
+            uploaders, nothing is ever stored on a server — so there's no size cap,
+            no paywall, and no privacy trade-off.
+          </p>
+
+          <div className="mt-10 w-full max-w-md">
+            {!file && (
+              <>
+                <DropZone onFile={handleFile} />
+                <div className="mt-8 flex items-center gap-3 text-xs text-zinc-400">
+                  <div className="h-px flex-1 bg-zinc-200" />
+                  have a code?
+                  <div className="h-px flex-1 bg-zinc-200" />
+                </div>
+                <form
+                  className="mt-4 flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (joinCode.trim()) router.push(`/join/${joinCode.trim().toUpperCase()}`);
+                  }}
                 >
-                  Join <ArrowRight className="h-4 w-4" />
-                </button>
-              </form>
-            </>
-          )}
+                  <input
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value)}
+                    placeholder="ABC123"
+                    maxLength={6}
+                    className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-center font-mono uppercase tracking-widest text-zinc-900 outline-none focus:border-cyan-500"
+                  />
+                  <button
+                    type="submit"
+                    className="flex items-center gap-1 rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  >
+                    Join <ArrowRight className="h-4 w-4" />
+                  </button>
+                </form>
+              </>
+            )}
 
-          {file && roomId && (
-            <div className="flex flex-col items-center gap-6">
-              <div className="flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <FileIcon className="h-5 w-5 shrink-0 text-cyan-600" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-zinc-800">{file.name}</p>
-                    <p className="text-xs text-zinc-500">{formatBytes(file.size)}</p>
+            {file && roomId && (
+              <div className="flex flex-col items-center gap-6">
+                <div className="flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <FileIcon className="h-5 w-5 shrink-0 text-cyan-600" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-800">{file.name}</p>
+                      <p className="text-xs text-zinc-500">{formatBytes(file.size)}</p>
+                    </div>
                   </div>
+                  <button onClick={reset} className="shrink-0 text-zinc-400 hover:text-zinc-900">
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
                 </div>
-                <button onClick={reset} className="shrink-0 text-zinc-400 hover:text-zinc-900">
-                  <RotateCcw className="h-4 w-4" />
-                </button>
+
+                <QRPanel roomId={roomId} shareUrl={shareUrl} />
+                <StatusPill status={status} />
+
+                {progress && status === "transferring" && (
+                  <div className="w-full">
+                    <ProgressBar percent={progress.percent} />
+                    <div className="mt-2 flex justify-between text-xs text-zinc-500">
+                      <span>
+                        {formatBytes(progress.bytesTransferred)} / {formatBytes(progress.totalBytes)}
+                      </span>
+                      <span>{formatSpeed(progress.speedBps)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {status === "completed" && completed === null && (
+                  <p className="text-sm text-emerald-600">Transfer complete.</p>
+                )}
+                {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
               </div>
-
-              <QRPanel roomId={roomId} shareUrl={shareUrl} />
-              <StatusPill status={status} />
-
-              {progress && status === "transferring" && (
-                <div className="w-full">
-                  <ProgressBar percent={progress.percent} />
-                  <div className="mt-2 flex justify-between text-xs text-zinc-500">
-                    <span>
-                      {formatBytes(progress.bytesTransferred)} / {formatBytes(progress.totalBytes)}
-                    </span>
-                    <span>{formatSpeed(progress.speedBps)}</span>
-                  </div>
-                </div>
-              )}
-
-              {status === "completed" && completed === null && (
-                <p className="text-sm text-emerald-600">Transfer complete.</p>
-              )}
-              {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </section>
 
-      <section className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-6 px-4 pb-16 sm:grid-cols-3">
-        {FEATURES.map(({ icon: Icon, title, desc }) => (
-          <div key={title} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
-            <Icon className="h-6 w-6 text-emerald-600" />
-            <h3 className="mt-3 text-sm font-semibold text-zinc-900">{title}</h3>
-            <p className="mt-1 text-xs text-zinc-500">{desc}</p>
-          </div>
-        ))}
-      </section>
+      <div className="px-4 pb-16">
+        <StatsBar />
+      </div>
 
-      <FAQ />
+      <div className="border-t border-zinc-100">
+        <HowItWorks />
+      </div>
+
+      <div className="border-t border-zinc-100 bg-zinc-50/50">
+        <UseCases />
+      </div>
+
+      <div className="border-t border-zinc-100">
+        <Compare />
+      </div>
+
+      <div className="border-t border-zinc-100 bg-zinc-50/50">
+        <FAQ />
+      </div>
     </main>
   );
 }
