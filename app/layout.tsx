@@ -1,7 +1,17 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/constants";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
+import {
+  AUTHOR_NAME,
+  PARENT_SITE_URL,
+  SITE_DESCRIPTION,
+  SITE_KEYWORDS,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from "@/lib/constants";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,7 +35,9 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   applicationName: SITE_NAME,
-  authors: [{ name: "Ashwani Tiwari" }],
+  authors: [{ name: AUTHOR_NAME, url: PARENT_SITE_URL }],
+  creator: AUTHOR_NAME,
+  publisher: AUTHOR_NAME,
   openGraph: {
     type: "website",
     url: SITE_URL,
@@ -67,13 +79,23 @@ const jsonLd = {
     "SHA-256 integrity verification",
     "QR code device pairing",
   ],
+  author: {
+    "@type": "Person",
+    name: AUTHOR_NAME,
+    url: PARENT_SITE_URL,
+  },
+  publisher: {
+    "@type": "Person",
+    name: AUTHOR_NAME,
+    url: PARENT_SITE_URL,
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
         <script
@@ -81,7 +103,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">{children}</body>
+      <body className="min-h-full flex flex-col bg-white text-zinc-900">
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+      </body>
     </html>
   );
 }

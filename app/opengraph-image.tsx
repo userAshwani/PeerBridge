@@ -26,6 +26,9 @@ export default function OpengraphImage() {
         <div style={{ display: "flex", fontSize: 32, color: "#a1a1aa", marginTop: 24 }}>
           Zero-Cloud P2P File Transfer
         </div>
+        <div style={{ display: "flex", fontSize: 24, color: "#52525b", marginTop: 40 }}>
+          by ashwanitiwari.com
+        </div>
       </div>
     ),
     size,

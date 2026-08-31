@@ -28,22 +28,22 @@ const FAQ_ITEMS = [
 export function FAQ() {
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-16" id="faq">
-      <h2 className="mb-8 text-center text-2xl font-bold text-zinc-100">
+      <h2 className="mb-8 text-center text-2xl font-bold text-zinc-900">
         Security & how it works
       </h2>
       <div className="flex flex-col gap-3">
         {FAQ_ITEMS.map((item) => (
           <details
             key={item.q}
-            className="group rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 open:border-cyan-400/40"
+            className="group rounded-xl border border-zinc-200 bg-zinc-50 p-4 open:border-cyan-500/40"
           >
-            <summary className="cursor-pointer list-none text-sm font-medium text-zinc-200 marker:content-none">
+            <summary className="cursor-pointer list-none text-sm font-medium text-zinc-800 marker:content-none">
               <span className="flex items-center justify-between">
                 {item.q}
-                <span className="text-zinc-500 transition-transform group-open:rotate-45">+</span>
+                <span className="text-zinc-400 transition-transform group-open:rotate-45">+</span>
               </span>
             </summary>
-            <p className="mt-3 text-sm leading-relaxed text-zinc-400">{item.a}</p>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-500">{item.a}</p>
           </details>
         ))}
       </div>

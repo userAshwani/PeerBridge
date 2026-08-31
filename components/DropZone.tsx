@@ -31,13 +31,13 @@ export function DropZone({ onFile }: { onFile: (file: File) => void }) {
       onDrop={handleDrop}
       className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
         isDragging
-          ? "border-cyan-400 bg-cyan-400/5"
-          : "border-zinc-700 bg-zinc-900/50 hover:border-zinc-600"
+          ? "border-cyan-500 bg-cyan-50"
+          : "border-zinc-300 bg-zinc-50 hover:border-zinc-400"
       }`}
     >
-      <UploadCloud className="h-10 w-10 text-emerald-400" />
-      <p className="text-sm font-medium text-zinc-200">
-        Drag & drop a file, or <span className="text-cyan-400">browse</span>
+      <UploadCloud className="h-10 w-10 text-emerald-600" />
+      <p className="text-sm font-medium text-zinc-800">
+        Drag & drop a file, or <span className="text-cyan-600">browse</span>
       </p>
       <p className="text-xs text-zinc-500">No size limit — streamed directly to your peer</p>
       <input

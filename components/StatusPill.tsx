@@ -29,15 +29,15 @@ export function StatusPill({ status }: { status: TransferStatus }) {
   const isBad = status === "error" || status === "rejected" || status === "closed";
 
   const dotClass = isDone
-    ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]"
+    ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
     : isBad
-      ? "bg-red-400"
+      ? "bg-red-500"
       : isActive
-        ? "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.9)] animate-pulse"
-        : "bg-zinc-500";
+        ? "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.6)] animate-pulse"
+        : "bg-zinc-400";
 
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-xs font-medium text-zinc-300">
+    <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
       <span className={`h-2 w-2 rounded-full ${dotClass}`} />
       {LABELS[status]}
     </span>

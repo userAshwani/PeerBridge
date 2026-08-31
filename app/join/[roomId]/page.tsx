@@ -22,9 +22,9 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
   }, [completed]);
 
   return (
-    <main className="flex flex-1 flex-col items-center bg-zinc-950 px-4 py-16 text-zinc-100">
+    <main className="flex flex-1 flex-col items-center bg-white px-4 py-16 text-zinc-900">
       <h1 className="text-2xl font-bold">
-        Joining <span className="font-mono text-emerald-400">{roomId.toUpperCase()}</span>
+        Joining <span className="font-mono text-emerald-600">{roomId.toUpperCase()}</span>
       </h1>
 
       <div className="mt-8 flex w-full max-w-md flex-col items-center gap-6">
@@ -37,11 +37,11 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
         ) : null}
 
         {status === "awaiting-accept" && incomingFile && (
-          <div className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+          <div className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 p-6">
             <div className="flex items-center gap-3">
-              <FileIcon className="h-8 w-8 text-cyan-400" />
+              <FileIcon className="h-8 w-8 text-cyan-600" />
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-zinc-100">{incomingFile.name}</p>
+                <p className="truncate text-sm font-medium text-zinc-900">{incomingFile.name}</p>
                 <p className="text-xs text-zinc-500">
                   {formatBytes(incomingFile.size)} · {incomingFile.mime || "unknown type"}
                 </p>
@@ -50,13 +50,13 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
             <div className="mt-5 flex gap-3">
               <button
                 onClick={accept}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-400 py-2.5 text-sm font-semibold text-zinc-950 hover:opacity-90"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2.5 text-sm font-semibold text-white hover:opacity-90"
               >
                 <CheckCircle2 className="h-4 w-4" /> Accept
               </button>
               <button
                 onClick={reject}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-zinc-700 py-2.5 text-sm font-semibold text-zinc-300 hover:border-red-400 hover:text-red-400"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-zinc-300 py-2.5 text-sm font-semibold text-zinc-600 hover:border-red-400 hover:text-red-500"
               >
                 <XCircle className="h-4 w-4" /> Decline
               </button>
@@ -77,23 +77,23 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
         )}
 
         {status === "verifying" && (
-          <p className="text-sm text-cyan-400">Verifying SHA-256 integrity…</p>
+          <p className="text-sm text-cyan-600">Verifying SHA-256 integrity…</p>
         )}
 
         {completed && (
-          <div className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 text-center">
+          <div className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-center">
             {completed.verified ? (
-              <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" />
+              <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" />
             ) : (
-              <ShieldAlert className="mx-auto h-10 w-10 text-red-400" />
+              <ShieldAlert className="mx-auto h-10 w-10 text-red-500" />
             )}
-            <p className="mt-3 text-sm font-medium text-zinc-100">
+            <p className="mt-3 text-sm font-medium text-zinc-900">
               {completed.verified ? "Transfer verified" : "Integrity check failed"}
             </p>
             <p className="text-xs text-zinc-500">{completed.meta.name}</p>
             <button
               onClick={() => downloadBlob(completed.blob, completed.meta.name)}
-              className="mx-auto mt-4 flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 hover:opacity-90"
+              className="mx-auto mt-4 flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
             >
               <Download className="h-4 w-4" /> Save file
             </button>
@@ -101,10 +101,10 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
         )}
 
         {status === "rejected" && (
-          <p className="text-sm text-zinc-400">You declined this transfer.</p>
+          <p className="text-sm text-zinc-500">You declined this transfer.</p>
         )}
 
-        {errorMessage && <p className="text-sm text-red-400">{errorMessage}</p>}
+        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
       </div>
     </main>
   );
