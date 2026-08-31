@@ -22,8 +22,8 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
   }, [completed]);
 
   return (
-    <main className="flex flex-1 flex-col items-center bg-white px-4 py-16 text-zinc-900">
-      <h1 className="text-2xl font-bold">
+    <main className="flex flex-1 flex-col items-center bg-white px-6 py-16 text-zinc-900">
+      <h1 className="text-3xl font-bold">
         Joining <span className="font-mono text-emerald-600">{roomId.toUpperCase()}</span>
       </h1>
 
@@ -41,8 +41,8 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
             <div className="flex items-center gap-3">
               <FileIcon className="h-8 w-8 text-cyan-600" />
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-zinc-900">{incomingFile.name}</p>
-                <p className="text-xs text-zinc-500">
+                <p className="truncate text-base font-medium text-zinc-900">{incomingFile.name}</p>
+                <p className="text-sm text-zinc-500">
                   {formatBytes(incomingFile.size)} · {incomingFile.mime || "unknown type"}
                 </p>
               </div>

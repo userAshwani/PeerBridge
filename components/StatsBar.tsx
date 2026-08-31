@@ -9,14 +9,14 @@ const STATS = [
 
 export function StatsBar() {
   return (
-    <div className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 sm:grid-cols-4">
+    <div className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-px overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-200 sm:grid-cols-4">
       {STATS.map(({ icon: Icon, label }) => (
         <div
           key={label}
-          className="flex flex-col items-center gap-2 bg-white px-4 py-5 text-center"
+          className="flex flex-col items-center gap-2.5 bg-white px-4 py-6 text-center"
         >
-          <Icon className="h-5 w-5 text-emerald-600" />
-          <span className="text-xs font-medium text-zinc-700">{label}</span>
+          <Icon className="h-6 w-6 text-emerald-600" />
+          <span className="text-sm font-medium text-zinc-700">{label}</span>
         </div>
       ))}
     </div>

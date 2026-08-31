@@ -11,38 +11,38 @@ const ROWS: [string, string, string][] = [
 
 export function Compare() {
   return (
-    <section className="mx-auto w-full max-w-4xl px-4 py-16" id="compare">
-      <h2 className="text-center text-2xl font-bold text-zinc-900">
+    <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:px-10" id="compare">
+      <h2 className="text-center text-3xl font-bold text-zinc-900">
         PeerBridge vs. traditional cloud file transfer
       </h2>
-      <p className="mx-auto mt-2 max-w-2xl text-center text-sm text-zinc-500">
+      <p className="mx-auto mt-3 max-w-2xl text-center text-base text-zinc-500">
         Cloud upload services store a copy of your file to hand out download links —
-        that's where their size caps and paywalls come from. PeerBridge skips storage
+        that&apos;s where their size caps and paywalls come from. PeerBridge skips storage
         entirely, so none of those limits apply.
       </p>
 
-      <div className="mt-10 overflow-x-auto rounded-2xl border border-zinc-200">
-        <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+      <div className="mt-12 overflow-x-auto rounded-2xl border border-zinc-200">
+        <table className="w-full min-w-[640px] border-collapse text-left text-base">
           <thead>
             <tr className="border-b border-zinc-200 bg-zinc-50">
-              <th className="px-5 py-3 font-medium text-zinc-500">&nbsp;</th>
-              <th className="px-5 py-3 font-semibold text-emerald-700">PeerBridge</th>
-              <th className="px-5 py-3 font-medium text-zinc-500">Typical cloud uploader</th>
+              <th className="px-6 py-4 font-medium text-zinc-500">&nbsp;</th>
+              <th className="px-6 py-4 font-semibold text-emerald-700">PeerBridge</th>
+              <th className="px-6 py-4 font-medium text-zinc-500">Typical cloud uploader</th>
             </tr>
           </thead>
           <tbody>
             {ROWS.map(([label, ours, theirs]) => (
               <tr key={label} className="border-b border-zinc-100 last:border-0">
-                <td className="px-5 py-4 align-top font-medium text-zinc-700">{label}</td>
-                <td className="px-5 py-4 align-top text-zinc-700">
+                <td className="px-6 py-5 align-top font-medium text-zinc-700">{label}</td>
+                <td className="px-6 py-5 align-top text-zinc-700">
                   <span className="flex items-start gap-2">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                    <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                     {ours}
                   </span>
                 </td>
-                <td className="px-5 py-4 align-top text-zinc-500">
+                <td className="px-6 py-5 align-top text-zinc-500">
                   <span className="flex items-start gap-2">
-                    <X className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                    <X className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" />
                     {theirs}
                   </span>
                 </td>
