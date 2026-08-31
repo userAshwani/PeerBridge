@@ -1,69 +1,144 @@
-import Image from "next/image";
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ShieldCheck, Zap, ServerCrash, ArrowRight, FileIcon, RotateCcw } from "lucide-react";
+import { DropZone } from "@/components/DropZone";
+import { QRPanel } from "@/components/QRPanel";
+import { StatusPill } from "@/components/StatusPill";
+import { ProgressBar } from "@/components/ProgressBar";
+import { FAQ } from "@/components/FAQ";
+import { usePeerTransfer } from "@/hooks/usePeerTransfer";
+import { generateRoomCode } from "@/lib/room-code";
+import { formatBytes, formatSpeed } from "@/lib/format";
+
+const FEATURES = [
+  { icon: ShieldCheck, title: "End-to-end encrypted", desc: "DTLS-secured RTCDataChannel, mandated by the WebRTC spec." },
+  { icon: ServerCrash, title: "Zero cloud storage", desc: "Files never touch a server — only your two browsers see the bytes." },
+  { icon: Zap, title: "No size limits", desc: "Chunked streaming with backpressure handles multi-gigabyte files." },
+];
 
 export default function Home() {
+  const router = useRouter();
+  const [file, setFile] = useState<File | null>(null);
+  const [joinCode, setJoinCode] = useState("");
+  const roomId = useMemo(() => (file ? generateRoomCode() : null), [file]);
+
+  const { status, progress, completed, errorMessage, setFile: pushFile } = usePeerTransfer(
+    roomId,
+    "sender",
+  );
+
+  const handleFile = (f: File) => {
+    setFile(f);
+    // setFile on the hook fires after the session mounts on the next render,
+    // so hand the File straight to the session once it exists.
+    queueMicrotask(() => pushFile(f));
+  };
+
+  const shareUrl =
+    roomId && typeof window !== "undefined"
+      ? `${window.location.origin}/join/${roomId}`
+      : "";
+
+  const reset = () => {
+    setFile(null);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="flex flex-1 flex-col bg-zinc-950 text-zinc-100">
+      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center px-4 py-16">
+        <h1 className="text-center text-4xl font-extrabold tracking-tight sm:text-5xl">
+          Peer<span className="text-emerald-400">Bridge</span>
+        </h1>
+        <p className="mt-4 max-w-xl text-center text-zinc-400">
+          Send files directly between devices over an encrypted WebRTC connection.
+          No uploads, no size limits, no account — nothing ever touches a server.
+        </p>
+
+        <div className="mt-10 w-full max-w-md">
+          {!file && (
+            <>
+              <DropZone onFile={handleFile} />
+              <div className="mt-8 flex items-center gap-3 text-xs text-zinc-500">
+                <div className="h-px flex-1 bg-zinc-800" />
+                have a code?
+                <div className="h-px flex-1 bg-zinc-800" />
+              </div>
+              <form
+                className="mt-4 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (joinCode.trim()) router.push(`/join/${joinCode.trim().toUpperCase()}`);
+                }}
+              >
+                <input
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  placeholder="ABC123"
+                  maxLength={6}
+                  className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-center font-mono uppercase tracking-widest text-zinc-100 outline-none focus:border-cyan-400"
+                />
+                <button
+                  type="submit"
+                  className="flex items-center gap-1 rounded-lg bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition-opacity hover:opacity-90"
+                >
+                  Join <ArrowRight className="h-4 w-4" />
+                </button>
+              </form>
+            </>
+          )}
+
+          {file && roomId && (
+            <div className="flex flex-col items-center gap-6">
+              <div className="flex w-full items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <FileIcon className="h-5 w-5 shrink-0 text-cyan-400" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-zinc-200">{file.name}</p>
+                    <p className="text-xs text-zinc-500">{formatBytes(file.size)}</p>
+                  </div>
+                </div>
+                <button onClick={reset} className="shrink-0 text-zinc-500 hover:text-zinc-200">
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+              </div>
+
+              <QRPanel roomId={roomId} shareUrl={shareUrl} />
+              <StatusPill status={status} />
+
+              {progress && status === "transferring" && (
+                <div className="w-full">
+                  <ProgressBar percent={progress.percent} />
+                  <div className="mt-2 flex justify-between text-xs text-zinc-500">
+                    <span>
+                      {formatBytes(progress.bytesTransferred)} / {formatBytes(progress.totalBytes)}
+                    </span>
+                    <span>{formatSpeed(progress.speedBps)}</span>
+                  </div>
+                </div>
+              )}
+
+              {status === "completed" && completed === null && (
+                <p className="text-sm text-emerald-400">Transfer complete.</p>
+              )}
+              {errorMessage && <p className="text-sm text-red-400">{errorMessage}</p>}
+            </div>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </section>
+
+      <section className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-6 px-4 pb-16 sm:grid-cols-3">
+        {FEATURES.map(({ icon: Icon, title, desc }) => (
+          <div key={title} className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+            <Icon className="h-6 w-6 text-emerald-400" />
+            <h3 className="mt-3 text-sm font-semibold text-zinc-100">{title}</h3>
+            <p className="mt-1 text-xs text-zinc-500">{desc}</p>
+          </div>
+        ))}
+      </section>
+
+      <FAQ />
+    </main>
   );
 }
