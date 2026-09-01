@@ -1,16 +1,18 @@
 // PeerBridge WebRTC transfer engine.
 //
 // Wire protocol over the RTCDataChannel (role of each side fixed for the
-// life of the channel — the sender always initiates):
-//   1. sender -> "meta"   (text/JSON)  file name/size/mime, sent as soon as
-//                                       the channel opens
-//   2. receiver -> "accept" | "reject" (text/JSON) user's response to the
-//                                       incoming-file prompt
-//   3. sender -> binary chunks (ArrayBuffer, <= CHUNK_SIZE bytes each)
-//   4. sender -> "end"    (text/JSON)  carries the SHA-256 of the whole
-//                                       file, computed in parallel with
-//                                       the chunk loop so it's ready by
-//                                       the time the last chunk is sent
+// life of the channel — the sender always initiates), supporting a batch
+// of one or more files (a folder drop flattens to a batch where each
+// file's relativePath encodes its folder structure):
+//   1. sender -> "batch-meta" (text/JSON) the full file list (name, size,
+//                               mime, relativePath) up front
+//   2. receiver -> "accept" | "reject" (text/JSON)
+//   3. for each file in order:
+//        sender -> "file-start" {index}
+//        sender -> binary chunks (ArrayBuffer, <= CHUNK_SIZE bytes each)
+//        sender -> "file-end" {index, sha256} — hash computed in parallel
+//                   with that file's chunk loop
+//   4. sender -> "batch-end" once every file is done
 //
 // Room-level control (cancel, disconnect) travels over the signaling
 // WebSocket instead, so it still works even before the data channel opens.
@@ -22,6 +24,7 @@
 import { Emitter } from "./emitter";
 import { RTCSignalData, SignalingClient } from "./signaling-client";
 import { sha256Chunks, sha256File, sha256Hex } from "./sha256";
+import { DroppedFile } from "./collect-files";
 
 export const CHUNK_SIZE = 64 * 1024; // 64KB
 const BUFFERED_AMOUNT_LOW_THRESHOLD = 1 * 1024 * 1024; // 1MB
@@ -54,8 +57,15 @@ export type TransferStatus =
 
 export interface FileMeta {
   name: string;
+  /** Folder path relative to the batch root; equals `name` for a flat file. */
+  relativePath: string;
   size: number;
   mime: string;
+}
+
+export interface IncomingBatch {
+  files: FileMeta[];
+  totalBytes: number;
 }
 
 export interface TransferProgress {
@@ -64,20 +74,28 @@ export interface TransferProgress {
   percent: number;
   speedBps: number;
   etaSeconds: number | null;
+  currentFileIndex: number;
+  currentFileName: string;
+  fileCount: number;
+}
+
+export interface CompletedFileResult {
+  meta: FileMeta;
+  verified: boolean;
 }
 
 export interface CompletedTransfer {
-  meta: FileMeta;
-  blob: Blob | File;
-  verified: boolean;
-  /** true if this was streamed straight to a user-picked disk location. */
+  files: CompletedFileResult[];
+  /** true if every file streamed straight to a user-picked disk location. */
   savedToDisk: boolean;
+  /** Only set when not saved to disk — one Blob per file, same order as `files`. */
+  blobs?: Blob[];
 }
 
 interface TransferEvents {
   status: TransferStatus;
   progress: TransferProgress;
-  "incoming-file": FileMeta;
+  "incoming-batch": IncomingBatch;
   completed: CompletedTransfer;
   /** Fatal problems: connection failures, integrity mismatches, signaling errors. */
   error: { message: string };
@@ -86,10 +104,25 @@ interface TransferEvents {
 }
 
 type DataChannelMessage =
-  | { type: "meta"; name: string; size: number; mime: string }
+  | { type: "batch-meta"; files: FileMeta[] }
   | { type: "accept" }
   | { type: "reject" }
-  | { type: "end"; sha256: string };
+  | { type: "file-start"; index: number }
+  | { type: "file-end"; index: number; sha256: string }
+  | { type: "batch-end" };
+
+/** Per-file receive state. Created fresh on every "file-start" and passed
+ * by reference to whatever needs it, rather than read back off shared
+ * `this.*` fields later — those get reset the moment the NEXT file's
+ * "file-start" arrives, which (since a write can take real wall-clock
+ * time) can happen before the previous file's "file-end" has finished
+ * closing/hashing it. Passing the slot itself sidesteps that race. */
+interface ReceiveSlot {
+  writeQueue: Promise<void>;
+  writable: FileSystemWritableFileStream | null;
+  fileHandle: FileSystemFileHandle | null;
+  chunks: ArrayBuffer[];
+}
 
 export class PeerTransferSession extends Emitter<TransferEvents> {
   private signaling = new SignalingClient();
@@ -97,19 +130,28 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private channel: RTCDataChannel | null = null;
   private remotePeerId: string | null = null;
 
-  private file: File | null = null;
-  private incomingMeta: FileMeta | null = null;
-  private receivedChunks: ArrayBuffer[] = [];
-  private receivedBytes = 0;
+  // ---- sender-side batch state -------------------------------------------
+  private files: DroppedFile[] = [];
+
+  // ---- receiver-side batch state -----------------------------------------
+  private incomingFiles: FileMeta[] = [];
+  private totalIncomingBytes = 0;
+  private receivedBytesTotal = 0;
+  private currentFileIndex = -1;
+  private currentSlot: ReceiveSlot | null = null;
+  private pendingFileFinishes: Promise<void>[] = [];
+  private completedResults: CompletedFileResult[] = [];
+  private completedBlobs: Blob[] = [];
+
+  // Set on accept() when the receiver picked a save location — either a
+  // whole directory (multi-file/folder batches) or a single file (the
+  // common one-file case, which gets the nicer "save as" picker).
+  private directoryHandle: FileSystemDirectoryHandle | null = null;
+  private singleFileHandle: FileSystemFileHandle | null = null;
+
   private transferActive = false;
   private receiveLastSampleTime = 0;
   private receiveLastSampleBytes = 0;
-
-  // Set when the receiver picked a save location via the File System
-  // Access API — chunks are streamed straight to disk instead of buffered.
-  private fileHandle: FileSystemFileHandle | null = null;
-  private writable: FileSystemWritableFileStream | null = null;
-  private writeQueue: Promise<void> = Promise.resolve();
 
   private status: TransferStatus = "idle";
   private disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,9 +167,9 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   }
 
   /** Sender only. Must be called before or right after connect(). */
-  setFile(file: File): void {
-    this.file = file;
-    if (this.channel?.readyState === "open") this.sendMeta();
+  setFiles(files: DroppedFile[]): void {
+    this.files = files;
+    if (this.channel?.readyState === "open") this.sendBatchMeta();
   }
 
   connect(): void {
@@ -180,25 +222,31 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   }
 
   /**
-   * Receiver only: accept an incoming file after reviewing its metadata.
+   * Receiver only: accept an incoming batch after reviewing its file list.
    * On browsers that support it (Chromium-based), this prompts the user to
-   * pick a save location and streams the file straight to disk; elsewhere
-   * it falls back to buffering in memory and triggering a normal download
-   * once complete.
+   * pick a save location — a single "Save As" for one file, or a folder
+   * for multiple files/a folder batch — and streams straight to disk;
+   * elsewhere it falls back to buffering in memory and triggering a
+   * normal download per file once complete.
    */
   async accept(): Promise<void> {
-    if (typeof window !== "undefined" && window.showSaveFilePicker) {
+    const isMulti =
+      this.incomingFiles.length > 1 || this.incomingFiles.some((f) => f.relativePath.includes("/"));
+
+    if (typeof window !== "undefined") {
       try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: this.incomingMeta?.name,
-        });
-        this.fileHandle = handle;
-        this.writable = await handle.createWritable();
+        if (isMulti && window.showDirectoryPicker) {
+          this.directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        } else if (!isMulti && window.showSaveFilePicker) {
+          this.singleFileHandle = await window.showSaveFilePicker({
+            suggestedName: this.incomingFiles[0]?.name,
+          });
+        }
       } catch {
         // User cancelled the picker, or the browser refused — fall back to
         // the in-memory path rather than blocking the transfer.
-        this.fileHandle = null;
-        this.writable = null;
+        this.directoryHandle = null;
+        this.singleFileHandle = null;
       }
     }
 
@@ -207,7 +255,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.sendControl({ type: "accept" });
   }
 
-  /** Receiver only: decline an incoming file. */
+  /** Receiver only: decline an incoming batch. */
   reject(): void {
     this.sendControl({ type: "reject" });
     this.setStatus("rejected");
@@ -378,7 +426,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
 
     channel.onopen = () => {
       this.setStatus("connected");
-      if (this.role === "sender" && this.file) this.sendMeta();
+      if (this.role === "sender" && this.files.length > 0) this.sendBatchMeta();
     };
 
     channel.onclose = () => {
@@ -394,156 +442,229 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     if (typeof event.data === "string") {
       const msg: DataChannelMessage = JSON.parse(event.data);
       switch (msg.type) {
-        case "meta":
-          this.incomingMeta = { name: msg.name, size: msg.size, mime: msg.mime };
-          this.receivedChunks = [];
-          this.receivedBytes = 0;
+        case "batch-meta":
+          this.incomingFiles = msg.files;
+          this.totalIncomingBytes = msg.files.reduce((sum, f) => sum + f.size, 0);
+          this.receivedBytesTotal = 0;
           this.receiveLastSampleTime = 0;
           this.receiveLastSampleBytes = 0;
+          this.completedResults = [];
+          this.completedBlobs = [];
+          this.pendingFileFinishes = [];
           this.setStatus("awaiting-accept");
-          this.emit("incoming-file", this.incomingMeta);
+          this.emit("incoming-batch", { files: this.incomingFiles, totalBytes: this.totalIncomingBytes });
           break;
         case "accept":
           this.transferActive = true;
-          if (this.file) void this.sendFileChunks(this.file, this.channel!);
+          if (this.files.length > 0) void this.sendBatch();
           break;
         case "reject":
           this.setStatus("rejected");
           break;
-        case "end":
-          void this.finalizeReceived(msg.sha256);
+        case "file-start": {
+          this.currentFileIndex = msg.index;
+          const slot: ReceiveSlot = { writeQueue: Promise.resolve(), writable: null, fileHandle: null, chunks: [] };
+          slot.writeQueue = this.prepareFileTarget(msg.index, slot);
+          this.currentSlot = slot;
+          break;
+        }
+        case "file-end": {
+          // Capture the slot synchronously — by the time this async call
+          // resolves, "file-start" for the next file may already have
+          // replaced this.currentSlot with a new one.
+          const slot = this.currentSlot;
+          if (slot) this.pendingFileFinishes.push(this.finishCurrentFile(msg.index, msg.sha256, slot));
+          break;
+        }
+        case "batch-end":
+          // "batch-end" can arrive before the last file's async
+          // close+verify has actually finished — wait for every
+          // in-flight finishCurrentFile() before reporting completion.
+          void Promise.all(this.pendingFileFinishes).then(() => this.finishBatch());
           break;
       }
       return;
     }
 
     const buffer = event.data as ArrayBuffer;
-    this.receivedBytes += buffer.byteLength;
+    this.receivedBytesTotal += buffer.byteLength;
 
-    if (this.writable) {
-      const writable = this.writable;
-      this.writeQueue = this.writeQueue.then(() => writable.write(buffer));
-    } else {
-      this.receivedChunks.push(buffer);
+    const slot = this.currentSlot;
+    if (slot) {
+      slot.writeQueue = slot.writeQueue.then(() => {
+        if (slot.writable) return slot.writable.write(buffer);
+        slot.chunks.push(buffer);
+      });
     }
 
     // Defensive: guarantee the UI shows a progress bar even if the local
     // "accept" status update ever raced with the first chunk arriving.
     if (this.status !== "transferring") this.setStatus("transferring");
 
-    const totalBytes = this.incomingMeta?.size ?? 0;
     const now = performance.now();
     if (this.receiveLastSampleTime === 0) {
-      // First chunk of this transfer — establish a baseline, no rate yet.
       this.receiveLastSampleTime = now;
-      this.receiveLastSampleBytes = this.receivedBytes;
-      this.reportProgress(this.receivedBytes, totalBytes, 0);
-    } else if (now - this.receiveLastSampleTime >= 200 || this.receivedBytes >= totalBytes) {
+      this.receiveLastSampleBytes = this.receivedBytesTotal;
+      this.reportProgress(this.receivedBytesTotal, this.totalIncomingBytes, 0);
+    } else if (now - this.receiveLastSampleTime >= 200 || this.receivedBytesTotal >= this.totalIncomingBytes) {
       const speedBps =
-        ((this.receivedBytes - this.receiveLastSampleBytes) / (now - this.receiveLastSampleTime)) *
+        ((this.receivedBytesTotal - this.receiveLastSampleBytes) / (now - this.receiveLastSampleTime)) *
           1000 || 0;
-      this.reportProgress(this.receivedBytes, totalBytes, speedBps);
+      this.reportProgress(this.receivedBytesTotal, this.totalIncomingBytes, speedBps);
       this.receiveLastSampleTime = now;
-      this.receiveLastSampleBytes = this.receivedBytes;
+      this.receiveLastSampleBytes = this.receivedBytesTotal;
     }
   }
 
-  private sendMeta(): void {
-    if (!this.file || !this.channel) return;
-    this.setStatus("awaiting-accept");
-    this.sendControl({
-      type: "meta",
-      name: this.file.name,
-      size: this.file.size,
-      mime: this.file.type || "application/octet-stream",
+  /** Creates (and creates parent folders for) the write target for one
+   * incoming file, writing the result into `slot` rather than `this` so a
+   * later file's setup can never clobber it. Runs as the head of
+   * slot.writeQueue so chunks that arrive before this resolves still
+   * queue up in the right order. */
+  private async prepareFileTarget(index: number, slot: ReceiveSlot): Promise<void> {
+    const meta = this.incomingFiles[index];
+    if (!meta) return;
+
+    try {
+      if (this.directoryHandle) {
+        const parts = meta.relativePath.split("/").filter(Boolean);
+        let dir = this.directoryHandle;
+        for (let i = 0; i < parts.length - 1; i++) {
+          dir = await dir.getDirectoryHandle(parts[i], { create: true });
+        }
+        const fileName = parts[parts.length - 1] || meta.name;
+        const fileHandle = await dir.getFileHandle(fileName, { create: true });
+        slot.fileHandle = fileHandle;
+        slot.writable = await fileHandle.createWritable();
+      } else if (this.singleFileHandle && index === 0) {
+        slot.fileHandle = this.singleFileHandle;
+        slot.writable = await this.singleFileHandle.createWritable();
+      }
+    } catch {
+      // Fall back to buffering this file in memory.
+      slot.writable = null;
+      slot.fileHandle = null;
+    }
+  }
+
+  private async finishCurrentFile(index: number, expectedSha256: string, slot: ReceiveSlot): Promise<void> {
+    await slot.writeQueue;
+    const meta = this.incomingFiles[index];
+    if (!meta) return;
+
+    this.setStatus("verifying");
+    let verified: boolean;
+
+    if (slot.writable && slot.fileHandle) {
+      await slot.writable.close();
+      const savedFile = await slot.fileHandle.getFile();
+      const buffer = await savedFile.arrayBuffer();
+      const actualSha256 = await sha256Hex(buffer);
+      verified = actualSha256 === expectedSha256;
+    } else {
+      const actualSha256 = await sha256Chunks(slot.chunks, meta.size);
+      verified = actualSha256 === expectedSha256;
+      this.completedBlobs.push(new Blob(slot.chunks, { type: meta.mime }));
+    }
+
+    this.completedResults.push({ meta, verified });
+
+    if (!verified) {
+      this.emit("error", {
+        message: `Integrity check failed for "${meta.relativePath}" — it may not match what was sent.`,
+      });
+    }
+  }
+
+  private finishBatch(): void {
+    const savedToDisk = Boolean(this.directoryHandle || this.singleFileHandle);
+    this.setStatus("completed");
+    this.emit("completed", {
+      files: this.completedResults,
+      savedToDisk,
+      blobs: savedToDisk ? undefined : this.completedBlobs,
     });
+  }
+
+  private sendBatchMeta(): void {
+    if (this.files.length === 0 || !this.channel) return;
+    this.setStatus("awaiting-accept");
+    const files: FileMeta[] = this.files.map(({ file, relativePath }) => ({
+      name: file.name,
+      relativePath,
+      size: file.size,
+      mime: file.type || "application/octet-stream",
+    }));
+    this.sendControl({ type: "batch-meta", files });
   }
 
   private sendControl(msg: DataChannelMessage): void {
     this.channel?.send(JSON.stringify(msg));
   }
 
-  private async sendFileChunks(file: File, channel: RTCDataChannel): Promise<void> {
+  private async sendBatch(): Promise<void> {
+    const channel = this.channel;
+    if (!channel) return;
+
     this.setStatus("transferring");
-    const hashPromise = sha256File(file);
+    const totalBytes = this.files.reduce((sum, { file }) => sum + file.size, 0);
+    let sentBytes = 0;
 
-    let offset = 0;
-    let lastSampleTime = performance.now();
-    let lastSampleBytes = 0;
-
-    while (offset < file.size) {
+    for (let index = 0; index < this.files.length; index++) {
       if (this.intentionallyClosed) return;
+      this.currentFileIndex = index;
+      const { file } = this.files[index];
 
-      if (channel.readyState !== "open") {
-        // Paused mid-flight by a reconnect — the while loop just waits;
-        // it resumes sending from the same offset once the channel (and
-        // the underlying ICE path) come back, so no bytes are re-sent.
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        continue;
+      this.sendControl({ type: "file-start", index });
+      const hashPromise = sha256File(file);
+
+      let offset = 0;
+      let lastSampleTime = performance.now();
+      let lastSampleBytes = sentBytes;
+
+      while (offset < file.size) {
+        if (this.intentionallyClosed) return;
+
+        if (channel.readyState !== "open") {
+          // Paused mid-flight by a reconnect — resumes from this same
+          // offset once the channel (and ICE path) comes back.
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+
+        if (channel.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+          await this.waitForBufferedAmountLow(channel);
+          continue;
+        }
+
+        const buffer = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+        try {
+          channel.send(buffer);
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          continue;
+        }
+        offset += buffer.byteLength;
+
+        const now = performance.now();
+        const totalSoFar = sentBytes + offset;
+        if (now - lastSampleTime >= 200 || offset === file.size) {
+          const speedBps = ((totalSoFar - lastSampleBytes) / (now - lastSampleTime)) * 1000 || 0;
+          this.reportProgress(totalSoFar, totalBytes, speedBps);
+          lastSampleTime = now;
+          lastSampleBytes = totalSoFar;
+        }
       }
 
-      if (channel.bufferedAmount > MAX_BUFFERED_AMOUNT) {
-        await this.waitForBufferedAmountLow(channel);
-        continue; // re-check readyState/intentionallyClosed before sending
-      }
-
-      const buffer = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
-      try {
-        channel.send(buffer);
-      } catch {
-        // Channel hiccupped between our checks and the actual send (e.g.
-        // it closed at the last instant) — brief wait, then retry the
-        // same offset rather than dropping the chunk.
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        continue;
-      }
-      offset += buffer.byteLength;
-
-      const now = performance.now();
-      if (now - lastSampleTime >= 200 || offset === file.size) {
-        const speedBps = ((offset - lastSampleBytes) / (now - lastSampleTime)) * 1000 || 0;
-        this.reportProgress(offset, file.size, speedBps);
-        lastSampleTime = now;
-        lastSampleBytes = offset;
-      }
+      sentBytes += file.size;
+      this.setStatus("verifying");
+      const sha256 = await hashPromise;
+      this.sendControl({ type: "file-end", index, sha256 });
+      this.setStatus("transferring");
     }
 
-    this.setStatus("verifying");
-    const sha256 = await hashPromise;
-    this.sendControl({ type: "end", sha256 });
+    this.sendControl({ type: "batch-end" });
     this.setStatus("completed");
-  }
-
-  private async finalizeReceived(expectedSha256: string): Promise<void> {
-    if (!this.incomingMeta) return;
-    this.setStatus("verifying");
-
-    let verified: boolean;
-    let result: Blob | File;
-    const savedToDisk = Boolean(this.writable && this.fileHandle);
-
-    if (this.writable && this.fileHandle) {
-      await this.writeQueue;
-      await this.writable.close();
-      const savedFile = await this.fileHandle.getFile();
-      const buffer = await savedFile.arrayBuffer();
-      const actualSha256 = await sha256Hex(buffer);
-      verified = actualSha256 === expectedSha256;
-      result = savedFile;
-    } else {
-      const actualSha256 = await sha256Chunks(this.receivedChunks, this.receivedBytes);
-      verified = actualSha256 === expectedSha256;
-      result = new Blob(this.receivedChunks, { type: this.incomingMeta.mime });
-    }
-
-    this.setStatus("completed");
-    this.emit("completed", { meta: this.incomingMeta, blob: result, verified, savedToDisk });
-
-    if (!verified) {
-      this.emit("error", {
-        message: "Integrity check failed — the received file does not match its SHA-256 hash.",
-      });
-    }
   }
 
   private waitForBufferedAmountLow(channel: RTCDataChannel): Promise<void> {
@@ -568,6 +689,11 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     });
   }
 
+  private currentFileName(): string {
+    const list = this.role === "sender" ? this.files.map((f) => f.relativePath) : this.incomingFiles.map((f) => f.relativePath);
+    return list[this.currentFileIndex] ?? "";
+  }
+
   private reportProgress(bytesTransferred: number, totalBytes: number, speedBps = 0): void {
     const remaining = totalBytes - bytesTransferred;
     const etaSeconds = speedBps > 0 ? remaining / speedBps : null;
@@ -577,6 +703,9 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       percent: totalBytes ? (bytesTransferred / totalBytes) * 100 : 0,
       speedBps,
       etaSeconds,
+      currentFileIndex: this.currentFileIndex,
+      currentFileName: this.currentFileName(),
+      fileCount: this.role === "sender" ? this.files.length : this.incomingFiles.length,
     });
   }
 

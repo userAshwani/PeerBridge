@@ -1,29 +1,31 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Loader2, UploadCloud } from "lucide-react";
+import { FolderUp, Loader2, UploadCloud } from "lucide-react";
+import { collectFilesFromDataTransfer, DroppedFile, filesFromFileList } from "@/lib/collect-files";
 
 export function DropZone({
-  onFile,
+  onFiles,
   disabled = false,
   disabledMessage = "Connecting to the relay…",
 }: {
-  onFile: (file: File) => void;
+  onFiles: (files: DroppedFile[]) => void;
   disabled?: boolean;
   disabledMessage?: string;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
+    async (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       setIsDragging(false);
       if (disabled) return;
-      const file = event.dataTransfer.files?.[0];
-      if (file) onFile(file);
+      const files = await collectFilesFromDataTransfer(event.dataTransfer);
+      if (files.length > 0) onFiles(files);
     },
-    [onFile, disabled],
+    [onFiles, disabled],
   );
 
   return (
@@ -43,13 +45,13 @@ export function DropZone({
         disabled
           ? "cursor-not-allowed border-zinc-200 bg-zinc-50 opacity-60"
           : isDragging
-            ? "cursor-pointer scale-[1.01] border-cyan-500 bg-cyan-50"
-            : "cursor-pointer border-zinc-300 bg-zinc-50 hover:border-emerald-400 hover:bg-emerald-50/40"
+            ? "cursor-pointer scale-[1.01] border-brand-500 bg-brand-50"
+            : "cursor-pointer border-zinc-300 bg-zinc-50 hover:border-brand-300 hover:bg-brand-50/40"
       }`}
     >
       <div
         className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${
-          disabled ? "bg-zinc-200" : "bg-gradient-to-br from-emerald-500 to-cyan-500 shadow-md"
+          disabled ? "bg-zinc-200" : "bg-gradient-to-br from-brand-400 to-brand-600 shadow-md"
         }`}
       >
         {disabled ? (
@@ -63,19 +65,48 @@ export function DropZone({
           disabledMessage
         ) : (
           <>
-            Drag & drop a file, or <span className="text-cyan-600">browse</span>
+            Drag & drop files or a folder, or <span className="text-brand-500">browse</span>
           </>
         )}
       </p>
-      <p className="text-xs text-zinc-500">No size limit — streamed directly to your peer</p>
+      <p className="text-xs text-zinc-500">No size or count limit — streamed directly to your peer</p>
+
+      {!disabled && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            folderInputRef.current?.click();
+          }}
+          className="mt-1 flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-brand-500"
+        >
+          <FolderUp className="h-3.5 w-3.5" /> or select a whole folder
+        </button>
+      )}
+
       <input
         ref={inputRef}
         type="file"
+        multiple
         disabled={disabled}
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onFile(file);
+          if (e.target.files && e.target.files.length > 0) onFiles(filesFromFileList(e.target.files));
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        disabled={disabled}
+        className="hidden"
+        // @ts-expect-error non-standard but universally supported attribute for folder selection
+        webkitdirectory=""
+        directory=""
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) onFiles(filesFromFileList(e.target.files));
+          e.target.value = "";
         }}
       />
     </div>

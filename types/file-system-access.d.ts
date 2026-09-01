@@ -7,6 +7,11 @@ interface SaveFilePickerOptions {
   types?: { description?: string; accept: Record<string, string[]> }[];
 }
 
+interface DirectoryPickerOptions {
+  mode?: "read" | "readwrite";
+}
+
 interface Window {
   showSaveFilePicker?(options?: SaveFilePickerOptions): Promise<FileSystemFileHandle>;
+  showDirectoryPicker?(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
 }

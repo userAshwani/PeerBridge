@@ -6,7 +6,7 @@ WebRTC `RTCDataChannel`. The server only relays room codes and WebRTC
 signaling (SDP/ICE), and exposes a `/health` endpoint for uptime
 monitoring.
 
-Live at **[transfer.ashwanitiwari.com](https://transfer.ashwanitiwari.com)**, a free tool from [ashwanitiwari.com](https://ashwanitiwari.com).
+Live at **[transfer.ashwanitiwari.com](https://transfer.ashwanitiwari.com)**, a free tool from [ashwanitiwari.com](https://ashwanitiwari.com). Questions or feedback: [ashwanitiwari.com/contact](https://ashwanitiwari.com/contact) or dev.ashwanitiwari@gmail.com.
 
 ## Stack
 
@@ -19,12 +19,22 @@ Live at **[transfer.ashwanitiwari.com](https://transfer.ashwanitiwari.com)**, a 
   half on its own, with no Next.js dependency.
 - **WebRTC `RTCDataChannel`** — 64KB chunked transfer with
   `bufferedAmount` backpressure, SHA-256 (Web Crypto API) integrity
-  verification, and an automatic ICE-restart attempt on a dropped
-  connection so brief network blips don't restart the transfer (see
-  [lib/webrtc.ts](lib/webrtc.ts))
+  verification per file, and an automatic ICE-restart attempt on a
+  dropped connection so brief network blips don't restart the transfer
+  (see [lib/webrtc.ts](lib/webrtc.ts))
+- **Batches, not just single files** — drag in multiple files or a whole
+  folder (folder structure is preserved via each file's relative path);
+  [lib/collect-files.ts](lib/collect-files.ts) walks the File and
+  Directory Entries API for dropped folders.
 - **File System Access API** (Chromium browsers) — accepting a transfer
-  prompts for a save location and streams straight to disk; other
-  browsers fall back to buffering in memory and a normal download.
+  prompts for a save location (a folder picker for multi-file/folder
+  batches, a "Save As" for a single file) and streams straight to disk;
+  other browsers fall back to buffering in memory and a normal download
+  per file.
+- **Gilroy + Rubik** — self-hosted heading/body fonts and the `#5368fd`
+  brand indigo, both pulled from ashwanitiwari.com's own theme (see
+  [lib/fonts.ts](lib/fonts.ts)) so this reads as the same brand rather
+  than a generic template.
 
 ## Getting started
 

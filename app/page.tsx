@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileIcon, RotateCcw, XCircle } from "lucide-react";
+import { ArrowRight, Files, RotateCcw, XCircle } from "lucide-react";
 import { DropZone } from "@/components/DropZone";
 import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
@@ -20,14 +20,15 @@ import { usePeerTransfer } from "@/hooks/usePeerTransfer";
 import { useRelayStatus } from "@/hooks/useRelayStatus";
 import { generateRoomCode } from "@/lib/room-code";
 import { formatBytes, formatDuration, formatSpeed } from "@/lib/format";
+import { DroppedFile } from "@/lib/collect-files";
 
 const TERMINAL_STATUSES = ["completed", "cancelled", "closed", "error", "rejected"];
 
 export default function Home() {
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFilesState] = useState<DroppedFile[]>([]);
   const [joinCode, setJoinCode] = useState("");
-  const roomId = useMemo(() => (file ? generateRoomCode() : null), [file]);
+  const roomId = useMemo(() => (files.length > 0 ? generateRoomCode() : null), [files]);
   const relay = useRelayStatus();
   const relayReady = relay.status === "connected";
 
@@ -37,15 +38,15 @@ export default function Home() {
     completed,
     errorMessage,
     noticeMessage,
-    setFile: pushFile,
+    setFiles: pushFiles,
     cancel,
   } = usePeerTransfer(roomId, "sender");
 
-  const handleFile = (f: File) => {
-    setFile(f);
-    // setFile on the hook fires after the session mounts on the next render,
-    // so hand the File straight to the session once it exists.
-    queueMicrotask(() => pushFile(f));
+  const handleFiles = (picked: DroppedFile[]) => {
+    setFilesState(picked);
+    // setFiles on the hook fires after the session mounts on the next render,
+    // so hand the files straight to the session once it exists.
+    queueMicrotask(() => pushFiles(picked));
   };
 
   const shareUrl =
@@ -55,15 +56,17 @@ export default function Home() {
 
   const reset = () => {
     if (roomId && !TERMINAL_STATUSES.includes(status)) cancel();
-    setFile(null);
+    setFilesState([]);
   };
+
+  const totalSize = files.reduce((sum, { file }) => sum + file.size, 0);
 
   return (
     <main className="flex flex-1 flex-col bg-white text-zinc-900">
       <section className="relative overflow-hidden">
         <div
           aria-hidden
-          className="pointer-events-none absolute -top-40 left-1/2 h-[32rem] w-[56rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-200/25 via-emerald-200/25 to-transparent blur-3xl"
+          className="pointer-events-none absolute -top-40 left-1/2 h-[32rem] w-[56rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-brand-100/60 via-brand-50/60 to-transparent blur-3xl"
         />
 
         <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-14 px-6 pb-16 pt-16 sm:px-10 sm:pt-20 lg:grid-cols-2 lg:gap-10">
@@ -74,20 +77,21 @@ export default function Home() {
 
             <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
               Send huge files instantly, device to device —{" "}
-              <span className="text-emerald-600">no cloud, no limits</span>
+              <span className="text-brand-500">no cloud, no limits</span>
             </h1>
             <p className="mt-5 max-w-xl text-lg text-zinc-500">
-              PeerBridge sends photos, videos, documents, and any other file directly
-              between two devices over an encrypted WebRTC connection. Unlike cloud
-              uploaders, nothing is ever stored on a server — so there&apos;s no size cap,
-              no paywall, and no privacy trade-off. No signup, either.
+              PeerBridge sends photos, videos, documents, entire folders — any file,
+              any number of them — directly between two devices over an encrypted
+              WebRTC connection. Unlike cloud uploaders, nothing is ever stored on a
+              server — so there&apos;s no size cap, no paywall, and no privacy
+              trade-off. No signup, either.
             </p>
 
             <div className="mt-10 w-full max-w-md rounded-3xl border border-zinc-200 bg-white/80 p-5 shadow-xl shadow-zinc-900/5 backdrop-blur">
-              {!file && (
+              {files.length === 0 && (
                 <>
                   <DropZone
-                    onFile={handleFile}
+                    onFiles={handleFiles}
                     disabled={!relayReady}
                     disabledMessage={
                       relay.status === "waking"
@@ -112,11 +116,11 @@ export default function Home() {
                       onChange={(e) => setJoinCode(e.target.value)}
                       placeholder="ABC123"
                       maxLength={6}
-                      className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-center font-mono text-base uppercase tracking-widest text-zinc-900 outline-none focus:border-cyan-500"
+                      className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-center font-mono text-base uppercase tracking-widest text-zinc-900 outline-none focus:border-brand-500"
                     />
                     <button
                       type="submit"
-                      className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-3 text-base font-semibold text-white shadow-md shadow-emerald-500/30 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                      className="flex items-center gap-1 rounded-full bg-gradient-to-r from-brand-500 to-brand-700 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-brand-500/30 transition-transform hover:scale-[1.02] active:scale-[0.98]"
                     >
                       Join <ArrowRight className="h-4 w-4" />
                     </button>
@@ -124,14 +128,18 @@ export default function Home() {
                 </>
               )}
 
-              {file && roomId && (
+              {files.length > 0 && roomId && (
                 <div className="flex flex-col items-center gap-6">
                   <div className="flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3.5">
                     <div className="flex items-center gap-3 overflow-hidden">
-                      <FileIcon className="h-5 w-5 shrink-0 text-cyan-600" />
+                      <Files className="h-5 w-5 shrink-0 text-brand-500" />
                       <div className="min-w-0">
-                        <p className="truncate text-base font-medium text-zinc-800">{file.name}</p>
-                        <p className="text-sm text-zinc-500">{formatBytes(file.size)}</p>
+                        <p className="truncate text-base font-medium text-zinc-800">
+                          {files.length === 1
+                            ? files[0].file.name
+                            : `${files.length} files`}
+                        </p>
+                        <p className="text-sm text-zinc-500">{formatBytes(totalSize)}</p>
                       </div>
                     </div>
                     <button onClick={reset} className="shrink-0 text-zinc-400 hover:text-zinc-900">
@@ -159,6 +167,12 @@ export default function Home() {
                         </span>
                         <span>{formatSpeed(progress.speedBps)}</span>
                       </div>
+                      {progress.fileCount > 1 && progress.currentFileName && (
+                        <p className="mt-1 truncate text-center text-xs text-zinc-500">
+                          File {progress.currentFileIndex + 1} of {progress.fileCount}:{" "}
+                          {progress.currentFileName}
+                        </p>
+                      )}
                       {status === "transferring" && (
                         <p className="mt-1 text-center text-xs text-zinc-400">
                           {formatDuration(progress.etaSeconds)}

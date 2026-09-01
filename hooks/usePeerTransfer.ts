@@ -3,21 +3,22 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   CompletedTransfer,
-  FileMeta,
+  IncomingBatch,
   PeerRole,
   PeerTransferSession,
   TransferProgress,
   TransferStatus,
 } from "@/lib/webrtc";
+import { DroppedFile } from "@/lib/collect-files";
 
 export interface UsePeerTransferResult {
   status: TransferStatus;
   progress: TransferProgress | null;
-  incomingFile: FileMeta | null;
+  incomingBatch: IncomingBatch | null;
   completed: CompletedTransfer | null;
   errorMessage: string | null;
   noticeMessage: string | null;
-  setFile: (file: File) => void;
+  setFiles: (files: DroppedFile[]) => void;
   accept: () => void;
   reject: () => void;
   cancel: () => void;
@@ -27,7 +28,7 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
   const sessionRef = useRef<PeerTransferSession | null>(null);
   const [status, setStatus] = useState<TransferStatus>("idle");
   const [progress, setProgress] = useState<TransferProgress | null>(null);
-  const [incomingFile, setIncomingFile] = useState<FileMeta | null>(null);
+  const [incomingBatch, setIncomingBatch] = useState<IncomingBatch | null>(null);
   const [completed, setCompleted] = useState<CompletedTransfer | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
@@ -44,7 +45,7 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
       if (s !== "closed" && s !== "cancelled") setNoticeMessage(null);
     });
     session.on("progress", setProgress);
-    session.on("incoming-file", setIncomingFile);
+    session.on("incoming-batch", setIncomingBatch);
     session.on("completed", setCompleted);
     session.on("error", ({ message }) => setErrorMessage(message));
     session.on("notice", ({ message }) => setNoticeMessage(message));
@@ -57,8 +58,8 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
     };
   }, [roomId, role]);
 
-  const setFile = useCallback((file: File) => {
-    sessionRef.current?.setFile(file);
+  const setFiles = useCallback((files: DroppedFile[]) => {
+    sessionRef.current?.setFiles(files);
   }, []);
 
   const accept = useCallback(() => {
@@ -76,11 +77,11 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
   return {
     status,
     progress,
-    incomingFile,
+    incomingBatch,
     completed,
     errorMessage,
     noticeMessage,
-    setFile,
+    setFiles,
     accept,
     reject,
     cancel,
