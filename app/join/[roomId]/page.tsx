@@ -4,6 +4,7 @@ import { use, useEffect, useRef } from "react";
 import { CheckCircle2, XCircle, FileIcon, ShieldAlert, Download, HardDrive } from "lucide-react";
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
+import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
 import { formatBytes, formatDuration, formatSpeed } from "@/lib/format";
 import { downloadBlob } from "@/lib/webrtc";
@@ -43,6 +44,7 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
       </h1>
 
       <div className="mt-8 flex w-full max-w-md flex-col items-center gap-6">
+        {!roomExpired && <TransferAnimation status={status} />}
         <StatusPill status={status} />
 
         {(status === "waiting-for-peer" || status === "connecting-signaling") && !roomExpired ? (

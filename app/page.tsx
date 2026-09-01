@@ -15,6 +15,7 @@ import { FAQ } from "@/components/FAQ";
 import { BuiltBy } from "@/components/BuiltBy";
 import { RelayStatusBadge } from "@/components/RelayStatusBadge";
 import { HeroIllustration } from "@/components/HeroIllustration";
+import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
 import { useRelayStatus } from "@/hooks/useRelayStatus";
 import { generateRoomCode } from "@/lib/room-code";
@@ -139,6 +140,7 @@ export default function Home() {
                   </div>
 
                   <QRPanel roomId={roomId} shareUrl={shareUrl} />
+                  <TransferAnimation status={status} />
                   <StatusPill status={status} />
 
                   {status === "reconnecting" && (
