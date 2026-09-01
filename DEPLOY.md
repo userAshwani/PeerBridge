@@ -1,11 +1,12 @@
 # Deploying PeerBridge
 
-Two supported paths:
+Three supported paths:
 
-- **[Option A: Render (free tier)](#option-a-render-free-tier)** — no server to manage, single Node web service, custom domain + free SSL. What this guide focuses on.
+- **[Option A: Render (free tier)](#option-a-render-free-tier)** — no server to manage, single Node web service, custom domain + free SSL.
 - **[Option B: VPS with Docker + Nginx](#option-b-vps-with-docker--nginx)** — full control, no cold starts, no free-tier sleep.
+- **[Option C: Vercel (frontend) + Render (backend)](#option-c-vercel-frontend--render-backend)** — the split most people reach for by default: Vercel for the Next.js app, Render for the signaling server.
 
-Both target the production domain `transfer.ashwanitiwari.com`.
+All three target the production domain `transfer.ashwanitiwari.com`.
 
 ---
 
@@ -178,7 +179,78 @@ docker compose up -d --build
 
 ---
 
-## Notes (both options)
+## Option C: Vercel (frontend) + Render (backend)
+
+This splits the two responsibilities server.js normally bundles together:
+
+- **Vercel** serves the Next.js app itself (`transfer.ashwanitiwari.com`) — Vercel's standard framework build, no custom server involved.
+- **Render** runs *only* the WebSocket signaling relay, via the new [server/standalone.js](server/standalone.js) — a plain Node/`ws` server with no Next.js dependency, exposing `/ws` and a `/health` check.
+
+The two talk to each other over `wss://`, which isn't subject to the
+same-origin restrictions `fetch` has, so cross-domain works fine.
+
+### 1. Deploy the signaling backend to Render
+
+1. In the [Render dashboard](https://dashboard.render.com), **New +** → **Web Service**, connect **`userAshwani/PeerBridge`**, branch `main`.
+2. **Configure** step:
+   - **Name**: `peerbridge-ws` (or anything).
+   - **Language**: **Node** (same Docker-vs-Node note as Option A applies).
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm run start:ws`
+   - **Instance Type**: **Free**.
+3. **Environment Variables**: `NODE_ENV` = `production` (again, don't set `PORT` — Render injects it and `server/standalone.js` already reads `process.env.PORT`).
+4. Deploy. Watch the logs for `> PeerBridge signaling server ready on http://0.0.0.0:<port> (ws: /ws)`.
+5. Verify:
+   ```bash
+   curl https://peerbridge-ws-xxxx.onrender.com/health
+   ```
+
+Optionally give it a custom subdomain too (e.g. `ws.ashwanitiwari.com`) the
+same way as step 3 in Option A — a second `CNAME` at your DNS provider,
+Render auto-issues its own cert for it. Using the default `onrender.com`
+hostname directly is simpler and works just as well; the examples below
+assume that.
+
+### 2. Deploy the frontend to Vercel
+
+1. In the [Vercel dashboard](https://vercel.com/new), import **`userAshwani/PeerBridge`**.
+2. Framework preset: **Next.js** (auto-detected). Leave the build command as `next build` (Vercel ignores `server.js` entirely — it only matters for Options A/B).
+3. **Environment Variables** — add:
+   - `NEXT_PUBLIC_SIGNALING_URL` = `wss://peerbridge-ws-xxxx.onrender.com/ws` (the Render URL from step 1, with `wss://` and the `/ws` path — this is what makes [lib/signaling-client.ts](lib/signaling-client.ts) point at Render instead of same-origin).
+4. Deploy.
+
+### 3. Point `transfer.ashwanitiwari.com` at Vercel
+
+1. In the Vercel project, **Settings** → **Domains** → add `transfer.ashwanitiwari.com`.
+2. Vercel shows you a DNS target — for a subdomain it's a `CNAME` to `cname.vercel-dns.com` (Vercel's dashboard gives you the exact current value; use that, not this doc, if they differ).
+3. At your DNS provider for `ashwanitiwari.com`, add that `CNAME` record for the `transfer` host.
+4. Vercel auto-provisions and renews SSL once DNS verifies (usually minutes).
+
+### 4. Verify end to end
+
+```bash
+curl -I https://transfer.ashwanitiwari.com/
+curl https://peerbridge-ws-xxxx.onrender.com/health
+```
+
+Open the site, drag in a file, and confirm the QR/room-code flow works —
+watch the [RelayStatusBadge](components/RelayStatusBadge.tsx) at the top:
+it connects straight to the Render backend, so a cold Render instance
+shows "Waking secure P2P signaling relay…" here exactly like it would in
+Option A, even though the page itself loaded instantly from Vercel.
+
+The same optional keep-alive-ping setup from Option A applies here —
+point it at `https://peerbridge-ws-xxxx.onrender.com/health` instead of
+`/api/health` on your own domain, since that's the Render service now.
+
+### Updating
+
+Both Vercel and Render auto-deploy on push to `main` by default — one
+`git push` updates both halves.
+
+---
+
+## Notes (all options)
 
 - `server.js` runs the Next.js app, the `/ws` signaling endpoint, and a
   `/health` (`/ping`, `/api/health`) check all on one process/port — so
@@ -190,4 +262,16 @@ docker compose up -d --build
 - If a host sits behind a symmetric NAT/firewall that a plain STUN
   handshake can't traverse, add a TURN server (e.g. `coturn`) and append
   its `urls`/`username`/`credential` to `ICE_SERVERS` in
-  [lib/webrtc.ts](lib/webrtc.ts).
+  [lib/webrtc.ts](lib/webrtc.ts). This is the single biggest lever for
+  transfer reliability on restrictive networks — STUN alone (what's
+  configured by default) can't punch through every NAT type.
+- A transfer survives brief network blips automatically: the sender
+  pauses and resumes from the same byte offset, and a dropped
+  `RTCPeerConnection` gets one automatic ICE-restart attempt before
+  giving up. What it does **not** do is survive a page reload or the
+  sender closing their tab — because no file data is ever written to a
+  server (the whole point of the zero-storage design), there is nothing
+  to resume from once a tab is gone. Closing the sender's tab
+  immediately invalidates the room code for new joins.
+- Either side can cancel from the UI at any point; the other side is
+  notified immediately and the room is freed.

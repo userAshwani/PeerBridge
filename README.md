@@ -13,10 +13,18 @@ Live at **[transfer.ashwanitiwari.com](https://transfer.ashwanitiwari.com)**, a 
 - **Next.js 16** (App Router, TypeScript, Tailwind CSS 4)
 - **[server.js](server.js)** — a custom Node server that runs the Next.js
   app, a `ws`-based WebSocket signaling server (`/ws`), and a health
-  check (`/health`, `/ping`, `/api/health`) all on one HTTP server/port
+  check (`/health`, `/ping`, `/api/health`) all on one HTTP server/port.
+  For a split deployment (e.g. Vercel + Render, see below),
+  [server/standalone.js](server/standalone.js) runs just the signaling
+  half on its own, with no Next.js dependency.
 - **WebRTC `RTCDataChannel`** — 64KB chunked transfer with
-  `bufferedAmount` backpressure and SHA-256 (Web Crypto API) integrity
-  verification (see [lib/webrtc.ts](lib/webrtc.ts))
+  `bufferedAmount` backpressure, SHA-256 (Web Crypto API) integrity
+  verification, and an automatic ICE-restart attempt on a dropped
+  connection so brief network blips don't restart the transfer (see
+  [lib/webrtc.ts](lib/webrtc.ts))
+- **File System Access API** (Chromium browsers) — accepting a transfer
+  prompts for a save location and streams straight to disk; other
+  browsers fall back to buffering in memory and a normal download.
 
 ## Getting started
 
@@ -34,29 +42,45 @@ open the app in two tabs to test a real transfer locally.
 | Path | What it is |
 | --- | --- |
 | `server.js` / `server/signaling.js` | Custom Node server + WebSocket room/SDP/ICE relay |
-| `lib/webrtc.ts` | The `PeerTransferSession` engine: chunking, backpressure, SHA-256 |
+| `server/standalone.js` | Signaling-only server for a split frontend/backend deployment |
+| `lib/webrtc.ts` | The `PeerTransferSession` engine: chunking, backpressure, reconnect, SHA-256 |
 | `lib/signaling-client.ts` | Browser-side WebSocket client for the signaling protocol |
 | `hooks/usePeerTransfer.ts` | React hook wrapping a transfer session (sender or receiver) |
 | `hooks/useRelayStatus.ts` | Tracks signaling-relay connectivity/latency, surfaces cold starts |
-| `app/page.tsx` | Sender UI: dropzone, room code, QR pairing |
-| `app/join/[roomId]/page.tsx` | Receiver UI: accept/decline, progress, verified download |
+| `app/page.tsx` | Sender UI: dropzone, room code, QR pairing, cancel |
+| `app/join/[roomId]/page.tsx` | Receiver UI: accept/decline, progress, verified download, cancel |
 
 ## Scripts
 
 ```bash
-npm run dev     # node server.js (dev mode)
-npm run build   # next build
-npm start       # NODE_ENV=production node server.js
-npm run lint    # eslint
+npm run dev       # node server.js (dev mode, bundles Next.js + /ws)
+npm run build     # next build
+npm start         # NODE_ENV=production node server.js
+npm run start:ws  # NODE_ENV=production node server/standalone.js (signaling only)
+npm run lint      # eslint
 ```
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md) for two paths:
+See [DEPLOY.md](DEPLOY.md) for three paths:
 
-- **Render (free tier)** — no server to manage, custom domain + free
-  SSL, step-by-step from repo connection to DNS.
+- **Render (free tier)** — everything in one Node web service, custom
+  domain + free SSL, step-by-step from repo connection to DNS.
+- **Vercel (frontend) + Render (backend)** — Next.js on Vercel,
+  `server/standalone.js` as a signaling-only service on Render,
+  connected via `NEXT_PUBLIC_SIGNALING_URL`.
 - **VPS with Docker + Nginx** — [Dockerfile](Dockerfile),
   [docker-compose.yml](docker-compose.yml), and an
   [Nginx virtual host config](deploy/nginx/transfer.ashwanitiwari.com.conf)
   with Certbot instructions.
+
+## Known limitations
+
+- No TURN server is configured by default (STUN only), so a transfer
+  between two devices on strict/symmetric NATs (common on some
+  corporate or mobile-carrier networks) may not connect. Add a TURN
+  server and extend `ICE_SERVERS` in `lib/webrtc.ts` — see DEPLOY.md.
+- A transfer can't resume after either tab is closed or reloaded — since
+  no file data is ever stored server-side, there's nothing to resume
+  from once the browser holding it in memory is gone. It does survive
+  brief reconnects (Wi-Fi drop, ICE restart) without losing progress.
