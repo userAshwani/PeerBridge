@@ -8,10 +8,13 @@ import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StatsBar } from "@/components/StatsBar";
+import { Features } from "@/components/Features";
 import { HowItWorks } from "@/components/HowItWorks";
 import { UseCases } from "@/components/UseCases";
+import { Pricing } from "@/components/Pricing";
 import { Compare } from "@/components/Compare";
 import { FAQ } from "@/components/FAQ";
+import { CallToAction } from "@/components/CallToAction";
 import { BuiltBy } from "@/components/BuiltBy";
 import { RelayStatusBadge } from "@/components/RelayStatusBadge";
 import { HeroIllustration } from "@/components/HeroIllustration";
@@ -62,7 +65,7 @@ export default function Home() {
   const totalSize = files.reduce((sum, { file }) => sum + file.size, 0);
 
   return (
-    <main className="flex flex-1 flex-col bg-white text-zinc-900">
+    <main id="top" className="flex flex-1 flex-col bg-white text-zinc-900">
       <section className="relative overflow-hidden">
         <div
           aria-hidden
@@ -210,19 +213,27 @@ export default function Home() {
         <StatsBar />
       </div>
 
-      <HowItWorks />
+      <Features />
 
       <div className="bg-zinc-50">
-        <UseCases />
+        <HowItWorks />
       </div>
 
-      <BuiltBy />
-
-      <Compare />
+      <UseCases />
 
       <div className="bg-zinc-50">
-        <FAQ />
+        <BuiltBy />
       </div>
+
+      <Pricing />
+
+      <div className="bg-zinc-50">
+        <Compare />
+      </div>
+
+      <FAQ />
+
+      <CallToAction />
     </main>
   );
 }
