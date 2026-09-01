@@ -102,6 +102,8 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private receivedChunks: ArrayBuffer[] = [];
   private receivedBytes = 0;
   private transferActive = false;
+  private receiveLastSampleTime = 0;
+  private receiveLastSampleBytes = 0;
 
   // Set when the receiver picked a save location via the File System
   // Access API — chunks are streamed straight to disk instead of buffered.
@@ -396,6 +398,8 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
           this.incomingMeta = { name: msg.name, size: msg.size, mime: msg.mime };
           this.receivedChunks = [];
           this.receivedBytes = 0;
+          this.receiveLastSampleTime = 0;
+          this.receiveLastSampleBytes = 0;
           this.setStatus("awaiting-accept");
           this.emit("incoming-file", this.incomingMeta);
           break;
@@ -426,7 +430,22 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     // Defensive: guarantee the UI shows a progress bar even if the local
     // "accept" status update ever raced with the first chunk arriving.
     if (this.status !== "transferring") this.setStatus("transferring");
-    this.reportProgress(this.receivedBytes, this.incomingMeta?.size ?? 0);
+
+    const totalBytes = this.incomingMeta?.size ?? 0;
+    const now = performance.now();
+    if (this.receiveLastSampleTime === 0) {
+      // First chunk of this transfer — establish a baseline, no rate yet.
+      this.receiveLastSampleTime = now;
+      this.receiveLastSampleBytes = this.receivedBytes;
+      this.reportProgress(this.receivedBytes, totalBytes, 0);
+    } else if (now - this.receiveLastSampleTime >= 200 || this.receivedBytes >= totalBytes) {
+      const speedBps =
+        ((this.receivedBytes - this.receiveLastSampleBytes) / (now - this.receiveLastSampleTime)) *
+          1000 || 0;
+      this.reportProgress(this.receivedBytes, totalBytes, speedBps);
+      this.receiveLastSampleTime = now;
+      this.receiveLastSampleBytes = this.receivedBytes;
+    }
   }
 
   private sendMeta(): void {
