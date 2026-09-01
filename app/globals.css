@@ -33,6 +33,13 @@ body {
   color: var(--foreground);
 }
 
+/* So in-page nav anchors (#features, #pricing, etc.) don't land a
+   section right under the sticky header. */
+section[id],
+main[id] {
+  scroll-margin-top: 5rem;
+}
+
 h1,
 h2,
 h3,

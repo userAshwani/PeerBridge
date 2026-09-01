@@ -9,11 +9,13 @@ import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
 import { StatsBar } from "@/components/StatsBar";
 import { Features } from "@/components/Features";
+import { About } from "@/components/About";
 import { HowItWorks } from "@/components/HowItWorks";
 import { UseCases } from "@/components/UseCases";
 import { Pricing } from "@/components/Pricing";
 import { Compare } from "@/components/Compare";
 import { FAQ } from "@/components/FAQ";
+import { Contact } from "@/components/Contact";
 import { CallToAction } from "@/components/CallToAction";
 import { BuiltBy } from "@/components/BuiltBy";
 import { RelayStatusBadge } from "@/components/RelayStatusBadge";
@@ -215,15 +217,15 @@ export default function Home() {
 
       <Features />
 
-      <div className="bg-zinc-50">
-        <HowItWorks />
-      </div>
+      <About />
 
-      <UseCases />
+      <HowItWorks />
 
       <div className="bg-zinc-50">
-        <BuiltBy />
+        <UseCases />
       </div>
+
+      <BuiltBy />
 
       <Pricing />
 
@@ -232,6 +234,10 @@ export default function Home() {
       </div>
 
       <FAQ />
+
+      <div className="bg-zinc-50">
+        <Contact />
+      </div>
 
       <CallToAction />
     </main>

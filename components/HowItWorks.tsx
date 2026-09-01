@@ -1,42 +1,48 @@
+import { UploadCloud, QrCode, ShieldCheck } from "lucide-react";
+
 const STEPS = [
   {
-    title: "Drop your file",
+    icon: UploadCloud,
+    title: "Drop Your File",
     desc: "Pick any file or folder on your device — no account, no sign-up, no waiting for an upload bar.",
   },
   {
-    title: "Share the code or QR",
+    icon: QrCode,
+    title: "Share The Code",
     desc: "A 6-character room code and QR code appear instantly. Scan it on the other device, or send the link.",
   },
   {
-    title: "Transfer starts instantly",
-    desc: "The moment the receiver accepts, bytes stream directly between the two browsers over an encrypted connection.",
+    icon: ShieldCheck,
+    title: "Transfer & Verify",
+    desc: "The moment the receiver accepts, bytes stream directly between the two browsers and get SHA-256 verified.",
   },
 ];
 
 export function HowItWorks() {
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:px-10" id="how-it-works">
-      <div className="max-w-xl">
+      <div className="mx-auto max-w-2xl text-center">
         <p className="text-xs font-semibold uppercase tracking-widest text-brand-500">
-          How it works
+          Working progress
         </p>
         <h2 className="mt-2 text-3xl font-bold text-zinc-900">
-          Three steps, no middleman
+          How Does PeerBridge Processing Work
         </h2>
-        <p className="mt-2 text-base text-zinc-500">
-          Your file never sits on a server waiting to be downloaded.
-        </p>
       </div>
 
-      <ol className="mt-12 grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-3">
-        {STEPS.map(({ title, desc }, i) => (
-          <li key={title} className="border-t-2 border-zinc-900 pt-4">
-            <span className="text-sm font-mono text-zinc-400">0{i + 1}</span>
-            <h3 className="mt-2 text-base font-semibold text-zinc-900">{title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-500">{desc}</p>
-          </li>
-        ))}
-      </ol>
+      <div className="relative mt-14 rounded-3xl border border-zinc-200 bg-zinc-50 p-8 sm:p-10">
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-3">
+          {STEPS.map(({ icon: Icon, title, desc }) => (
+            <div key={title} className="text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-md">
+                <Icon className="h-7 w-7 text-brand-500" />
+              </div>
+              <h3 className="mt-5 text-base font-semibold text-zinc-900">{title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-500">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
