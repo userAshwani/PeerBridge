@@ -2,17 +2,21 @@ import { FileText, Image as ImageIcon, ShieldCheck, Video } from "lucide-react";
 
 /**
  * Hand-built SVG + icon composition depicting two devices exchanging
- * data directly over an encrypted P2P link — stands in for a product
+ * data directly over an encrypted P2P link — a frosted-glass panel meant
+ * to sit on the colored hero banner, standing in for a product
  * screenshot without needing external image assets.
  */
 export function HeroIllustration() {
   return (
-    <div className="relative mx-auto aspect-square w-full max-w-md">
+    <div className="relative mx-auto aspect-square w-full max-w-lg">
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-brand-100 via-brand-50 to-white"
+        className="absolute inset-0 rounded-[2.5rem] border border-white/20 bg-white/10 backdrop-blur-xl"
       />
-      <div aria-hidden className="absolute inset-0 rounded-[2.5rem] bg-dot-grid opacity-40" />
+      <div
+        aria-hidden
+        className="absolute inset-8 rounded-[2rem] bg-gradient-to-br from-white/10 to-transparent"
+      />
 
       <svg
         viewBox="0 0 400 400"
@@ -22,24 +26,24 @@ export function HeroIllustration() {
       >
         <defs>
           <linearGradient id="deviceA" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#7f8dfe" />
-            <stop offset="100%" stopColor="#5368fd" />
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor="#d6dcff" />
           </linearGradient>
           <linearGradient id="deviceB" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#5368fd" />
-            <stop offset="100%" stopColor="#4431a7" />
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor="#a8b4ff" />
           </linearGradient>
         </defs>
 
         {/* left device */}
         <rect x="36" y="120" width="92" height="160" rx="16" fill="url(#deviceA)" />
-        <rect x="50" y="136" width="64" height="98" rx="4" fill="white" fillOpacity="0.25" />
-        <circle cx="82" cy="252" r="5" fill="white" fillOpacity="0.6" />
+        <rect x="50" y="136" width="64" height="98" rx="4" fill="#5368fd" fillOpacity="0.15" />
+        <circle cx="82" cy="252" r="5" fill="#5368fd" fillOpacity="0.4" />
 
         {/* right device */}
         <rect x="272" y="120" width="92" height="160" rx="16" fill="url(#deviceB)" />
-        <rect x="286" y="136" width="64" height="98" rx="4" fill="white" fillOpacity="0.25" />
-        <circle cx="318" cy="252" r="5" fill="white" fillOpacity="0.6" />
+        <rect x="286" y="136" width="64" height="98" rx="4" fill="#5368fd" fillOpacity="0.15" />
+        <circle cx="318" cy="252" r="5" fill="#5368fd" fillOpacity="0.4" />
 
         {/* connection beam */}
         <line
@@ -47,35 +51,44 @@ export function HeroIllustration() {
           y1="200"
           x2="272"
           y2="200"
-          stroke="#5368fd"
+          stroke="#ffffff"
           strokeWidth="3"
           strokeDasharray="6 6"
           strokeLinecap="round"
           className="animate-flow"
-          opacity="0.6"
+          opacity="0.8"
         />
       </svg>
 
       {/* encrypted-link badge, centered on the beam */}
-      <div className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bg-white shadow-lg ring-1 ring-black/5">
+      <div className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl bg-white shadow-lg">
         <ShieldCheck className="h-7 w-7 text-emerald-600" />
       </div>
 
       {/* floating file-type chips */}
-      <div className="animate-float-slow absolute left-[18%] top-[14%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md ring-1 ring-black/5">
+      <div className="animate-float-slow absolute left-[18%] top-[14%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md">
         <ImageIcon className="h-5 w-5 text-brand-500" />
       </div>
       <div
-        className="animate-float-slow absolute right-[16%] top-[20%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md ring-1 ring-black/5"
+        className="animate-float-slow absolute right-[16%] top-[20%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md"
         style={{ animationDelay: "1.2s" }}
       >
         <Video className="h-5 w-5 text-brand-700" />
       </div>
       <div
-        className="animate-float-slow absolute bottom-[16%] left-[30%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md ring-1 ring-black/5"
+        className="animate-float-slow absolute bottom-[16%] left-[30%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md"
         style={{ animationDelay: "2.1s" }}
       >
         <FileText className="h-5 w-5 text-brand-500" />
+      </div>
+
+      {/* decorative "it's live" chip */}
+      <div
+        className="animate-float-slow absolute bottom-6 right-6 flex items-center gap-2 rounded-xl bg-white/95 px-4 py-2.5 shadow-lg"
+        style={{ animationDelay: "0.6s" }}
+      >
+        <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]" />
+        <p className="text-sm font-bold text-zinc-900">Direct & encrypted</p>
       </div>
     </div>
   );

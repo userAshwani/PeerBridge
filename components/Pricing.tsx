@@ -35,7 +35,7 @@ export function Pricing() {
           ))}
         </ul>
         <a
-          href="#top"
+          href="#transfer"
           className="mt-8 block rounded-full bg-gradient-to-r from-brand-500 to-brand-700 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-brand-500/30 transition-transform hover:scale-[1.02]"
         >
           Start sending

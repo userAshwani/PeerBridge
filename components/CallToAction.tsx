@@ -16,7 +16,7 @@ export function CallToAction() {
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <a
-            href="#top"
+            href="#transfer"
             className="flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold uppercase tracking-wide text-brand-600 shadow-md transition-transform hover:scale-[1.02]"
           >
             Start a transfer <ArrowRight className="h-4 w-4" />
