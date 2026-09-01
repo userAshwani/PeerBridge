@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Rubik } from "next/font/google";
 import "./globals.css";
+import { gilroy } from "@/lib/fonts";
+import { TopBar } from "@/components/TopBar";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import {
@@ -13,8 +15,11 @@ import {
   SITE_URL,
 } from "@/lib/constants";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Rubik (body) + Gilroy (headings) mirror ashwanitiwari.com's own theme
+// typography, so this reads as the same brand rather than a default
+// Next.js font pairing.
+const rubik = Rubik({
+  variable: "--font-rubik",
   subsets: ["latin"],
 });
 
@@ -94,7 +99,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${rubik.variable} ${gilroy.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
         <script
@@ -102,7 +107,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-white text-zinc-900">
+      <body className="min-h-full flex flex-col bg-white font-sans text-zinc-900">
+        <TopBar />
         <SiteHeader />
         {children}
         <SiteFooter />

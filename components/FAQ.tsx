@@ -28,7 +28,7 @@ const FAQ_ITEMS = [
 export function FAQ() {
   return (
     <section className="mx-auto w-full max-w-4xl px-6 py-16 sm:px-10" id="faq">
-      <p className="text-center text-xs font-semibold uppercase tracking-widest text-emerald-600">
+      <p className="text-center text-xs font-semibold uppercase tracking-widest text-brand-500">
         Questions
       </p>
       <h2 className="mb-10 mt-2 text-center text-3xl font-bold text-zinc-900">
@@ -38,12 +38,12 @@ export function FAQ() {
         {FAQ_ITEMS.map((item) => (
           <details
             key={item.q}
-            className="group rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition-shadow open:border-emerald-400/50 open:shadow-md"
+            className="group rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition-shadow open:border-brand-300/60 open:shadow-md"
           >
             <summary className="cursor-pointer list-none text-base font-medium text-zinc-800 marker:content-none">
               <span className="flex items-center justify-between">
                 {item.q}
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 transition-transform group-open:rotate-45 group-open:bg-emerald-100 group-open:text-emerald-600">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 transition-transform group-open:rotate-45 group-open:bg-brand-100 group-open:text-brand-500">
                   +
                 </span>
               </span>

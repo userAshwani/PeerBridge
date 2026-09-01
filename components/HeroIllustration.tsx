@@ -10,7 +10,7 @@ export function HeroIllustration() {
     <div className="relative mx-auto aspect-square w-full max-w-md">
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-emerald-100 via-cyan-50 to-violet-100"
+        className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-brand-100 via-brand-50 to-white"
       />
       <div aria-hidden className="absolute inset-0 rounded-[2.5rem] bg-dot-grid opacity-40" />
 
@@ -22,12 +22,12 @@ export function HeroIllustration() {
       >
         <defs>
           <linearGradient id="deviceA" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#059669" />
+            <stop offset="0%" stopColor="#7f8dfe" />
+            <stop offset="100%" stopColor="#5368fd" />
           </linearGradient>
           <linearGradient id="deviceB" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#22d3ee" />
-            <stop offset="100%" stopColor="#0891b2" />
+            <stop offset="0%" stopColor="#5368fd" />
+            <stop offset="100%" stopColor="#4431a7" />
           </linearGradient>
         </defs>
 
@@ -47,7 +47,7 @@ export function HeroIllustration() {
           y1="200"
           x2="272"
           y2="200"
-          stroke="#10b981"
+          stroke="#5368fd"
           strokeWidth="3"
           strokeDasharray="6 6"
           strokeLinecap="round"
@@ -63,19 +63,19 @@ export function HeroIllustration() {
 
       {/* floating file-type chips */}
       <div className="animate-float-slow absolute left-[18%] top-[14%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md ring-1 ring-black/5">
-        <ImageIcon className="h-5 w-5 text-cyan-600" />
+        <ImageIcon className="h-5 w-5 text-brand-500" />
       </div>
       <div
         className="animate-float-slow absolute right-[16%] top-[20%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md ring-1 ring-black/5"
         style={{ animationDelay: "1.2s" }}
       >
-        <Video className="h-5 w-5 text-violet-600" />
+        <Video className="h-5 w-5 text-brand-700" />
       </div>
       <div
         className="animate-float-slow absolute bottom-[16%] left-[30%] flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-md ring-1 ring-black/5"
         style={{ animationDelay: "2.1s" }}
       >
-        <FileText className="h-5 w-5 text-emerald-600" />
+        <FileText className="h-5 w-5 text-brand-500" />
       </div>
     </div>
   );

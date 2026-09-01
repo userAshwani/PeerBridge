@@ -17,7 +17,7 @@ export function HowItWorks() {
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:px-10" id="how-it-works">
       <div className="max-w-xl">
-        <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand-500">
           How it works
         </p>
         <h2 className="mt-2 text-3xl font-bold text-zinc-900">

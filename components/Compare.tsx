@@ -13,7 +13,7 @@ export function Compare() {
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:px-10" id="compare">
       <div className="max-w-xl">
-        <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand-500">
           Why not just use a cloud uploader
         </p>
         <h2 className="mt-2 text-3xl font-bold text-zinc-900">
@@ -31,7 +31,7 @@ export function Compare() {
           <thead>
             <tr className="border-b border-zinc-200 bg-zinc-50">
               <th className="px-6 py-4 font-medium text-zinc-500">&nbsp;</th>
-              <th className="px-6 py-4 font-semibold text-emerald-700">PeerBridge</th>
+              <th className="px-6 py-4 font-semibold text-brand-700">PeerBridge</th>
               <th className="px-6 py-4 font-medium text-zinc-500">Typical cloud uploader</th>
             </tr>
           </thead>
@@ -39,7 +39,7 @@ export function Compare() {
             {ROWS.map(([label, ours, theirs]) => (
               <tr key={label} className="border-b border-zinc-100 last:border-0">
                 <td className="px-6 py-5 align-top font-medium text-zinc-700">{label}</td>
-                <td className="bg-emerald-50/30 px-6 py-5 align-top text-zinc-700">
+                <td className="bg-brand-50/40 px-6 py-5 align-top text-zinc-700">
                   <span className="flex items-start gap-2">
                     <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                     {ours}

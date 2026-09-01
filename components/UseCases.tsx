@@ -37,7 +37,7 @@ export function UseCases() {
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:px-10" id="use-cases">
       <div className="max-w-xl">
-        <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
+        <p className="text-xs font-semibold uppercase tracking-widest text-brand-500">
           What you can send
         </p>
         <h2 className="mt-2 text-3xl font-bold text-zinc-900">
@@ -52,7 +52,7 @@ export function UseCases() {
       <div className="mt-10 grid grid-cols-1 divide-y divide-zinc-200 border-t border-zinc-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-3">
         {USE_CASES.map(({ icon: Icon, title, desc }) => (
           <div key={title} className="flex gap-3 px-1 py-6 sm:px-6">
-            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand-500" />
             <div>
               <h3 className="text-sm font-semibold text-zinc-900">{title}</h3>
               <p className="mt-1 text-sm leading-relaxed text-zinc-500">{desc}</p>

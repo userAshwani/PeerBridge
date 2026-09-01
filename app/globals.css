@@ -2,20 +2,44 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #18181b;
+  --foreground: #252525;
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-rubik);
+  --font-heading: var(--font-gilroy);
   --font-mono: var(--font-geist-mono);
+
+  /* Brand indigo, pulled from ashwanitiwari.com's own theme (#5368fd is
+     its primary accent) — replaces the generic emerald/cyan SaaS-template
+     palette as the primary interactive color. Emerald is kept, but only
+     for security/verified/success signals (checkmarks, encryption
+     badges), which is a meaningful, not decorative, use of color. */
+  --color-brand-50: #f6f4ff;
+  --color-brand-100: #e7eaff;
+  --color-brand-200: #d6dcff;
+  --color-brand-400: #7f8dfe;
+  --color-brand-500: #5368fd;
+  --color-brand-600: #4a4fe0;
+  --color-brand-700: #553fbf;
+  --color-brand-800: #4431a7;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
 }
 
 details summary::-webkit-details-marker {
