@@ -28,7 +28,7 @@ Option B, but the free-plan settings in this guide assume Node).
    - **Language**: change the auto-detected **Docker** to **Node** — this reveals the Build/Start command fields.
    - **Branch**: `main`.
    - **Region**: pick whichever is closest to your users (Singapore, Oregon, Frankfurt, etc. all work — the WebRTC transfer itself never touches this region, only the signaling handshake does).
-   - **Build Command**: `npm install && npm run build`
+   - **Build Command**: `npm install --include=dev && npm run build`
    - **Start Command**: `npm start`
    - **Instance Type**: **Free** ($0/month, 0.1 CPU / 512MB RAM) — sufficient, since no file data ever passes through this instance.
 4. **Environment Variables** — click **Add Environment Variable**:
@@ -36,7 +36,17 @@ Option B, but the free-plan settings in this guide assume Node).
    - You do **not** need to set `PORT` yourself — Render injects its own `PORT` at runtime and [server.js](server.js) already reads `process.env.PORT`. If you do set one explicitly, it must match what Render tells the service to listen on (Render's dashboard shows this, commonly `10000`).
 5. Click **Deploy Web Service**.
 
-First deploy takes a few minutes (`npm install && npm run build` runs cold). Watch the **Logs** tab for `> PeerBridge ready on http://0.0.0.0:<port> (ws: /ws)`.
+> **Why `--include=dev`:** Tailwind, TypeScript, and ESLint are all
+> `devDependencies` — needed to build the app, not to run it. Setting
+> `NODE_ENV=production` (step 4) makes a plain `npm install` skip
+> `devDependencies`, so `next build` fails with `Cannot find module
+> '@tailwindcss/postcss'`. `--include=dev` forces them to install
+> regardless. If you already deployed with the plain `npm install &&
+> npm run build` command and hit that error, this is the fix — update
+> the Build Command in **Settings** and **Manual Deploy** → **Deploy
+> latest commit**.
+
+First deploy takes a few minutes (`npm install --include=dev && npm run build` runs cold). Watch the **Logs** tab for `> PeerBridge ready on http://0.0.0.0:<port> (ws: /ws)`.
 
 ### 2. Verify the deploy
 
@@ -195,11 +205,18 @@ same-origin restrictions `fetch` has, so cross-domain works fine.
 2. **Configure** step:
    - **Name**: `peerbridge-ws` (or anything).
    - **Language**: **Node** (same Docker-vs-Node note as Option A applies).
-   - **Build Command**: `npm install`
+   - **Build Command**: `npm install` — **type this exactly**; because the
+     repo is a Next.js app, Render's wizard often auto-fills
+     `npm install; npm run build` here by default. This service must
+     **not** run `next build` (it doesn't serve the frontend at all — that's
+     Vercel's job in step 2), so delete anything after `npm install` if
+     Render pre-filled it. Running `next build` here fails with `Cannot
+     find module '@tailwindcss/postcss'` since this service also won't
+     have `devDependencies` installed.
    - **Start Command**: `npm run start:ws`
    - **Instance Type**: **Free**.
 3. **Environment Variables**: `NODE_ENV` = `production` (again, don't set `PORT` — Render injects it and `server/standalone.js` already reads `process.env.PORT`).
-4. Deploy. Watch the logs for `> PeerBridge signaling server ready on http://0.0.0.0:<port> (ws: /ws)`.
+4. Deploy. Watch the logs for `> PeerBridge signaling server ready on http://0.0.0.0:<port> (ws: /ws)` — **not** anything mentioning `next build` or `Turbopack`. If your logs show Turbopack/Next.js running, the Build Command reverted or was never changed; fix it in **Settings** and **Manual Deploy** → **Deploy latest commit**.
 5. Verify:
    ```bash
    curl https://peerbridge-ws-xxxx.onrender.com/health
