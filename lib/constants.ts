@@ -7,6 +7,8 @@ export const PARENT_SITE_NAME = "Ashwani Tiwari";
 // site being reachable when this one loads.
 export const LOGO_URL = "/logo.png";
 export const AUTHOR_NAME = "Ashwani Tiwari";
+export const CONTACT_URL = `${PARENT_SITE_URL}/contact`;
+export const CONTACT_EMAIL = "dev.ashwanitiwari@gmail.com";
 export const SITE_TITLE =
   "PeerBridge - Send Large Files Free, No Size Limit | P2P File Transfer";
 export const SITE_DESCRIPTION =

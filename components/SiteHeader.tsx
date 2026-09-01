@@ -16,14 +16,14 @@ export function SiteHeader() {
           />
           <span className="text-lg font-bold tracking-tight text-zinc-900">
             {SITE_NAME.replace("Bridge", "")}
-            <span className="text-emerald-600">Bridge</span>
+            <span className="text-brand-500">Bridge</span>
           </span>
         </Link>
         <a
           href={PARENT_SITE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm font-medium text-zinc-500 transition-colors hover:text-emerald-600"
+          className="text-sm font-medium text-zinc-500 transition-colors hover:text-brand-500"
         >
           by Ashwani Tiwari →
         </a>
