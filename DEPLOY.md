@@ -8,6 +8,26 @@ Three supported paths:
 
 All three target the production domain `transfer.ashwanitiwari.com`.
 
+**Auto-deploy on every `git push` is the default on every path here** —
+nothing extra to configure beyond the one-time setup below:
+
+- **Vercel**: automatic for any Git-connected project. Every push to
+  `main` triggers a new production deployment; pushes to other branches
+  get their own preview deployment. Nothing to turn on.
+- **Render**: **Auto-Deploy** defaults to **On** for both a manually
+  configured Web Service and a Blueprint (`render.yaml`) service —
+  visible under **Settings → Build & Deploy**. Option C below uses the
+  [render.yaml](render.yaml) Blueprint specifically so the *service
+  configuration itself* (Build/Start command, health check, plan) is
+  also version-controlled — Render's dashboard wizard auto-filling the
+  wrong build command (a real issue hit while writing this guide, see
+  Option C) can't happen once the service is defined in that file
+  instead of typed into the dashboard by hand.
+- **Docker/VPS (Option B)** has no platform to auto-deploy for you — see
+  its own "Updating" section for a `git pull && docker compose up -d
+  --build` one-liner; wiring that to a webhook/CI runner is out of
+  scope here.
+
 ---
 
 ## Option A: Render (free tier)
@@ -199,28 +219,36 @@ This splits the two responsibilities server.js normally bundles together:
 The two talk to each other over `wss://`, which isn't subject to the
 same-origin restrictions `fetch` has, so cross-domain works fine.
 
-### 1. Deploy the signaling backend to Render
+### 1. Deploy the signaling backend to Render, from render.yaml
 
-1. In the [Render dashboard](https://dashboard.render.com), **New +** → **Web Service**, connect **`userAshwani/PeerBridge`**, branch `main`.
-2. **Configure** step:
-   - **Name**: `peerbridge-ws` (or anything).
-   - **Language**: **Node** (same Docker-vs-Node note as Option A applies).
-   - **Build Command**: `npm install` — **type this exactly**; because the
-     repo is a Next.js app, Render's wizard often auto-fills
-     `npm install; npm run build` here by default. This service must
-     **not** run `next build` (it doesn't serve the frontend at all — that's
-     Vercel's job in step 2), so delete anything after `npm install` if
-     Render pre-filled it. Running `next build` here fails with `Cannot
-     find module '@tailwindcss/postcss'` since this service also won't
-     have `devDependencies` installed.
-   - **Start Command**: `npm run start:ws`
-   - **Instance Type**: **Free**.
-3. **Environment Variables**: `NODE_ENV` = `production` (again, don't set `PORT` — Render injects it and `server/standalone.js` already reads `process.env.PORT`).
-4. Deploy. Watch the logs for `> PeerBridge signaling server ready on http://0.0.0.0:<port> (ws: /ws)` — **not** anything mentioning `next build` or `Turbopack`. If your logs show Turbopack/Next.js running, the Build Command reverted or was never changed; fix it in **Settings** and **Manual Deploy** → **Deploy latest commit**.
+Use the **Blueprint** flow rather than manually filling in the "New Web
+Service" form — [render.yaml](render.yaml) already pins the correct
+Build/Start commands as code, which is what avoids the exact problem
+this guide originally ran into (Render's wizard silently auto-filling a
+Next.js build command onto a service that must never run one).
+
+1. In the [Render dashboard](https://dashboard.render.com), **New +** → **Blueprint**.
+2. Connect **`userAshwani/PeerBridge`**, branch `main`. Render detects [render.yaml](render.yaml) and shows one service to create: **`peerbridge-ws`**.
+3. Click **Apply** / **Create New Resources**. Render provisions it using exactly the config in the file — `npm install` as the build command, `npm run start:ws` as the start command, the `/health` path as its health check, free plan, `NODE_ENV=production` — no fields to fill in or get wrong.
+4. Watch the logs for `> PeerBridge signaling server ready on http://0.0.0.0:<port> (ws: /ws)` — not anything mentioning `next build` or `Turbopack`.
 5. Verify:
    ```bash
    curl https://peerbridge-ws-xxxx.onrender.com/health
    ```
+
+**Already have a manually created `peerbridge-ws` service from before?**
+Either fix its Build Command by hand (**Settings** → Build Command →
+`npm install`, deleting any `&& npm run build`), or delete that service
+and create a fresh one via the Blueprint flow above — either works, the
+Blueprint just makes it impossible to mis-set going forward, since
+future edits happen in `render.yaml` (committed, reviewed, pushed) 
+instead of a dashboard form.
+
+**Auto-Deploy** is on by default for Blueprint services — confirm under
+**Settings → Build & Deploy** on the service. Every push to `main` (to
+`render.yaml` or any other file) redeploys it automatically; a
+`render.yaml` change also updates the service's own settings, not just
+its code.
 
 Optionally give it a custom subdomain too (e.g. `ws.ashwanitiwari.com`) the
 same way as step 3 in Option A — a second `CNAME` at your DNS provider,
@@ -263,7 +291,19 @@ point it at `https://peerbridge-ws-xxxx.onrender.com/health` instead of
 ### Updating
 
 Both Vercel and Render auto-deploy on push to `main` by default — one
-`git push` updates both halves.
+`git push` updates both halves. To double-check it's actually on for
+your project:
+
+- **Vercel**: project → **Settings** → **Git** — the connected repo/branch
+  is shown there; as long as it's connected, every push deploys. There's
+  no separate "auto-deploy" switch to miss.
+- **Render**: `peerbridge-ws` → **Settings** → **Build & Deploy** →
+  **Auto-Deploy** should read **Yes**. If it was ever switched to
+  **No** (e.g. while debugging a bad deploy), flip it back.
+
+Push a trivial commit (e.g. touch `DEPLOY.md`) and watch both
+dashboards' **Deploys**/**Deployments** tab pick it up automatically as
+a sanity check.
 
 ---
 

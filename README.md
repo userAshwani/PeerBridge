@@ -43,6 +43,7 @@ open the app in two tabs to test a real transfer locally.
 | --- | --- |
 | `server.js` / `server/signaling.js` | Custom Node server + WebSocket room/SDP/ICE relay |
 | `server/standalone.js` | Signaling-only server for a split frontend/backend deployment |
+| `render.yaml` | Render Blueprint pinning the signaling service's config as code (build/start command, health check, auto-deploy) |
 | `lib/webrtc.ts` | The `PeerTransferSession` engine: chunking, backpressure, reconnect, SHA-256 |
 | `lib/signaling-client.ts` | Browser-side WebSocket client for the signaling protocol |
 | `hooks/usePeerTransfer.ts` | React hook wrapping a transfer session (sender or receiver) |
@@ -62,17 +63,21 @@ npm run lint      # eslint
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md) for three paths:
+See [DEPLOY.md](DEPLOY.md) for three paths. All of them auto-deploy on
+every `git push` to `main` once set up once:
 
 - **Render (free tier)** — everything in one Node web service, custom
   domain + free SSL, step-by-step from repo connection to DNS.
 - **Vercel (frontend) + Render (backend)** — Next.js on Vercel,
-  `server/standalone.js` as a signaling-only service on Render,
+  `server/standalone.js` as a signaling-only service on Render (deployed
+  from [render.yaml](render.yaml) as a Blueprint, so its config is
+  version-controlled instead of hand-typed into a dashboard form),
   connected via `NEXT_PUBLIC_SIGNALING_URL`.
 - **VPS with Docker + Nginx** — [Dockerfile](Dockerfile),
   [docker-compose.yml](docker-compose.yml), and an
   [Nginx virtual host config](deploy/nginx/transfer.ashwanitiwari.com.conf)
-  with Certbot instructions.
+  with Certbot instructions (this one has no platform auto-deploy —
+  see DEPLOY.md).
 
 ## Known limitations
 

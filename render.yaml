@@ -1,0 +1,28 @@
+# Render Blueprint — defines the signaling-only backend used by
+# Option C (Vercel frontend + Render backend) in DEPLOY.md.
+#
+# Deploying this via "New +" -> "Blueprint" in the Render dashboard
+# (instead of manually configuring a Web Service by hand) pins the
+# correct Build/Start commands as code, so Render's own wizard can't
+# auto-fill a Next.js build command onto a service that must never run
+# one. Auto-Deploy is on by default for Blueprint services — every push
+# to main redeploys this service automatically.
+#
+# If you'd rather run the single combined Next.js + signaling server
+# instead (DEPLOY.md Option A), ignore this file and follow Option A's
+# manual dashboard steps there instead.
+
+services:
+  - type: web
+    name: peerbridge-ws
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm install
+    startCommand: npm run start:ws
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
