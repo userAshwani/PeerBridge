@@ -12,23 +12,26 @@ const ROWS: [string, string, string][] = [
 export function Compare() {
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:px-10" id="compare">
-      <h2 className="text-center text-3xl font-bold text-zinc-900">
-        PeerBridge vs. traditional cloud file transfer
-      </h2>
-      <p className="mx-auto mt-3 max-w-2xl text-center text-base text-zinc-500">
-        Cloud upload services store a copy of your file to hand out download links —
-        that&apos;s where their size caps and paywalls come from. PeerBridge skips storage
-        entirely, so none of those limits apply.
-      </p>
+      <div className="max-w-xl">
+        <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
+          Why not just use a cloud uploader
+        </p>
+        <h2 className="mt-2 text-3xl font-bold text-zinc-900">
+          PeerBridge vs. traditional cloud file transfer
+        </h2>
+        <p className="mt-2 text-base text-zinc-500">
+          Cloud upload services store a copy of your file to hand out download links
+          — that&apos;s where their size caps and paywalls come from. PeerBridge skips
+          storage entirely, so none of those limits apply.
+        </p>
+      </div>
 
-      <div className="mt-12 overflow-x-auto rounded-2xl border border-zinc-200 shadow-sm">
+      <div className="mt-10 overflow-x-auto rounded-2xl border border-zinc-200">
         <table className="w-full min-w-[640px] border-collapse text-left text-base">
           <thead>
-            <tr className="border-b border-zinc-200">
+            <tr className="border-b border-zinc-200 bg-zinc-50">
               <th className="px-6 py-4 font-medium text-zinc-500">&nbsp;</th>
-              <th className="bg-gradient-to-r from-emerald-50 to-cyan-50 px-6 py-4 font-semibold text-emerald-700">
-                PeerBridge
-              </th>
+              <th className="px-6 py-4 font-semibold text-emerald-700">PeerBridge</th>
               <th className="px-6 py-4 font-medium text-zinc-500">Typical cloud uploader</th>
             </tr>
           </thead>

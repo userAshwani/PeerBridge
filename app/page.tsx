@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileIcon, RotateCcw, Sparkles, XCircle } from "lucide-react";
+import { ArrowRight, FileIcon, RotateCcw, XCircle } from "lucide-react";
 import { DropZone } from "@/components/DropZone";
 import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
@@ -12,6 +12,7 @@ import { HowItWorks } from "@/components/HowItWorks";
 import { UseCases } from "@/components/UseCases";
 import { Compare } from "@/components/Compare";
 import { FAQ } from "@/components/FAQ";
+import { BuiltBy } from "@/components/BuiltBy";
 import { RelayStatusBadge } from "@/components/RelayStatusBadge";
 import { HeroIllustration } from "@/components/HeroIllustration";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
@@ -61,32 +62,24 @@ export default function Home() {
       <section className="relative overflow-hidden">
         <div
           aria-hidden
-          className="pointer-events-none absolute -top-40 left-1/2 h-[36rem] w-[64rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-200/40 via-emerald-200/40 to-violet-200/40 blur-3xl"
+          className="pointer-events-none absolute -top-40 left-1/2 h-[32rem] w-[56rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-200/25 via-emerald-200/25 to-transparent blur-3xl"
         />
-        <div aria-hidden className="bg-dot-grid pointer-events-none absolute inset-0 opacity-[0.15]" />
 
         <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-14 px-6 pb-16 pt-16 sm:px-10 sm:pt-20 lg:grid-cols-2 lg:gap-10">
           <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
-            <div className="mb-4">
+            <div className="mb-6">
               <RelayStatusBadge status={relay.status} latencyMs={relay.latencyMs} />
             </div>
 
-            <span className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-sm font-medium text-emerald-700">
-              <Sparkles className="h-4 w-4" />
-              No signup · No size limit · 100% free forever
-            </span>
-
-            <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">
-              Send huge files instantly —{" "}
-              <span className="bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
-                no cloud, no limits
-              </span>
+            <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
+              Send huge files instantly, device to device —{" "}
+              <span className="text-emerald-600">no cloud, no limits</span>
             </h1>
             <p className="mt-5 max-w-xl text-lg text-zinc-500">
               PeerBridge sends photos, videos, documents, and any other file directly
               between two devices over an encrypted WebRTC connection. Unlike cloud
               uploaders, nothing is ever stored on a server — so there&apos;s no size cap,
-              no paywall, and no privacy trade-off.
+              no paywall, and no privacy trade-off. No signup, either.
             </p>
 
             <div className="mt-10 w-full max-w-md rounded-3xl border border-zinc-200 bg-white/80 p-5 shadow-xl shadow-zinc-900/5 backdrop-blur">
@@ -201,19 +194,17 @@ export default function Home() {
         <StatsBar />
       </div>
 
-      <div className="border-t border-zinc-100">
-        <HowItWorks />
-      </div>
+      <HowItWorks />
 
-      <div className="border-t border-zinc-100 bg-gradient-to-b from-zinc-50/70 to-white">
+      <div className="bg-zinc-50">
         <UseCases />
       </div>
 
-      <div className="border-t border-zinc-100">
-        <Compare />
-      </div>
+      <BuiltBy />
 
-      <div className="border-t border-zinc-100 bg-gradient-to-b from-zinc-50/70 to-white">
+      <Compare />
+
+      <div className="bg-zinc-50">
         <FAQ />
       </div>
     </main>

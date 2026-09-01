@@ -28,7 +28,10 @@ const FAQ_ITEMS = [
 export function FAQ() {
   return (
     <section className="mx-auto w-full max-w-4xl px-6 py-16 sm:px-10" id="faq">
-      <h2 className="mb-10 text-center text-3xl font-bold text-zinc-900">
+      <p className="text-center text-xs font-semibold uppercase tracking-widest text-emerald-600">
+        Questions
+      </p>
+      <h2 className="mb-10 mt-2 text-center text-3xl font-bold text-zinc-900">
         Security & how it works
       </h2>
       <div className="flex flex-col gap-3">
