@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileIcon, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowRight, FileIcon, RotateCcw, Sparkles, XCircle } from "lucide-react";
 import { DropZone } from "@/components/DropZone";
 import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
@@ -17,7 +17,9 @@ import { HeroIllustration } from "@/components/HeroIllustration";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
 import { useRelayStatus } from "@/hooks/useRelayStatus";
 import { generateRoomCode } from "@/lib/room-code";
-import { formatBytes, formatSpeed } from "@/lib/format";
+import { formatBytes, formatDuration, formatSpeed } from "@/lib/format";
+
+const TERMINAL_STATUSES = ["completed", "cancelled", "closed", "error", "rejected"];
 
 export default function Home() {
   const router = useRouter();
@@ -27,10 +29,15 @@ export default function Home() {
   const relay = useRelayStatus();
   const relayReady = relay.status === "connected";
 
-  const { status, progress, completed, errorMessage, setFile: pushFile } = usePeerTransfer(
-    roomId,
-    "sender",
-  );
+  const {
+    status,
+    progress,
+    completed,
+    errorMessage,
+    noticeMessage,
+    setFile: pushFile,
+    cancel,
+  } = usePeerTransfer(roomId, "sender");
 
   const handleFile = (f: File) => {
     setFile(f);
@@ -45,6 +52,7 @@ export default function Home() {
       : "";
 
   const reset = () => {
+    if (roomId && !TERMINAL_STATUSES.includes(status)) cancel();
     setFile(null);
   };
 
@@ -140,7 +148,14 @@ export default function Home() {
                   <QRPanel roomId={roomId} shareUrl={shareUrl} />
                   <StatusPill status={status} />
 
-                  {progress && status === "transferring" && (
+                  {status === "reconnecting" && (
+                    <p className="text-center text-sm text-amber-600">
+                      Connection wobbled — trying to reconnect. Your transfer will resume
+                      from where it left off.
+                    </p>
+                  )}
+
+                  {progress && (status === "transferring" || status === "verifying") && (
                     <div className="w-full">
                       <ProgressBar percent={progress.percent} />
                       <div className="mt-2 flex justify-between text-sm text-zinc-500">
@@ -149,13 +164,28 @@ export default function Home() {
                         </span>
                         <span>{formatSpeed(progress.speedBps)}</span>
                       </div>
+                      {status === "transferring" && (
+                        <p className="mt-1 text-center text-xs text-zinc-400">
+                          {formatDuration(progress.etaSeconds)}
+                        </p>
+                      )}
                     </div>
                   )}
 
                   {status === "completed" && completed === null && (
                     <p className="text-sm text-emerald-600">Transfer complete.</p>
                   )}
+                  {noticeMessage && <p className="text-sm text-zinc-500">{noticeMessage}</p>}
                   {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+
+                  {!TERMINAL_STATUSES.includes(status) && (
+                    <button
+                      onClick={reset}
+                      className="flex items-center gap-1.5 text-sm font-medium text-zinc-400 hover:text-red-500"
+                    >
+                      <XCircle className="h-4 w-4" /> Cancel transfer
+                    </button>
+                  )}
                 </div>
               )}
             </div>
