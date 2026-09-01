@@ -16,9 +16,11 @@ export interface UsePeerTransferResult {
   incomingFile: FileMeta | null;
   completed: CompletedTransfer | null;
   errorMessage: string | null;
+  noticeMessage: string | null;
   setFile: (file: File) => void;
   accept: () => void;
   reject: () => void;
+  cancel: () => void;
 }
 
 export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerTransferResult {
@@ -28,6 +30,7 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
   const [incomingFile, setIncomingFile] = useState<FileMeta | null>(null);
   const [completed, setCompleted] = useState<CompletedTransfer | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!roomId) return;
@@ -35,11 +38,16 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
     const session = new PeerTransferSession(roomId, role);
     sessionRef.current = session;
 
-    session.on("status", setStatus);
+    session.on("status", (s) => {
+      setStatus(s);
+      // A fresh status change means any previous notice no longer applies.
+      if (s !== "closed" && s !== "cancelled") setNoticeMessage(null);
+    });
     session.on("progress", setProgress);
     session.on("incoming-file", setIncomingFile);
     session.on("completed", setCompleted);
     session.on("error", ({ message }) => setErrorMessage(message));
+    session.on("notice", ({ message }) => setNoticeMessage(message));
 
     session.connect();
 
@@ -54,12 +62,27 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
   }, []);
 
   const accept = useCallback(() => {
-    sessionRef.current?.accept();
+    void sessionRef.current?.accept();
   }, []);
 
   const reject = useCallback(() => {
     sessionRef.current?.reject();
   }, []);
 
-  return { status, progress, incomingFile, completed, errorMessage, setFile, accept, reject };
+  const cancel = useCallback(() => {
+    sessionRef.current?.cancel();
+  }, []);
+
+  return {
+    status,
+    progress,
+    incomingFile,
+    completed,
+    errorMessage,
+    noticeMessage,
+    setFile,
+    accept,
+    reject,
+    cancel,
+  };
 }

@@ -11,6 +11,7 @@ export interface SignalingEvents {
   "room-joined": { roomId: string; peerId: string; senderId: string };
   "peer-joined": { peerId: string; role: "sender" | "receiver" };
   "peer-left": { peerId: string; role: "sender" | "receiver" };
+  cancelled: { by: "sender" | "receiver" };
   signal: { peerId: string; data: RTCSignalData };
 }
 
@@ -18,8 +19,16 @@ export type RTCSignalData =
   | { sdp: RTCSessionDescriptionInit }
   | { candidate: RTCIceCandidateInit };
 
+/**
+ * Resolves the signaling WebSocket URL. Defaults to same-origin `/ws`
+ * (the single-process server.js deployment). Set NEXT_PUBLIC_SIGNALING_URL
+ * (e.g. "wss://peerbridge-ws.onrender.com/ws") when the frontend and the
+ * signaling backend are deployed separately — see DEPLOY.md.
+ */
 export function getSignalingUrl(): string {
   if (typeof window === "undefined") return "";
+  const configured = process.env.NEXT_PUBLIC_SIGNALING_URL;
+  if (configured) return configured;
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws`;
 }
@@ -65,6 +74,10 @@ export class SignalingClient extends Emitter<SignalingEvents> {
 
   sendSignal(roomId: string, data: RTCSignalData, targetId?: string): void {
     this.send({ type: "signal", roomId, targetId, data });
+  }
+
+  sendCancel(roomId: string): void {
+    this.send({ type: "cancel", roomId });
   }
 
   leaveRoom(): void {

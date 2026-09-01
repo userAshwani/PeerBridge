@@ -9,3 +9,16 @@ export function formatBytes(bytes: number): string {
 export function formatSpeed(bytesPerSecond: number): string {
   return `${formatBytes(bytesPerSecond)}/s`;
 }
+
+export function formatDuration(totalSeconds: number | null): string {
+  if (totalSeconds === null || !Number.isFinite(totalSeconds)) return "calculating…";
+  if (totalSeconds < 1) return "<1s left";
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  if (minutes > 0) return `${minutes}m ${seconds}s left`;
+  return `${seconds}s left`;
+}

@@ -83,9 +83,11 @@ function attachSignaling(wss) {
             return send(ws, { type: "error", message: "roomId required" });
           }
           const room = getRoom(roomId);
-          if (room.sender) {
+          if (room.sender && room.sender.ws.readyState === room.sender.ws.OPEN) {
             return send(ws, { type: "error", message: "Room already has a sender" });
           }
+          // A stale sender (socket no longer open, e.g. reconnecting after
+          // a dropped connection) doesn't get to keep the room.
           room.sender = { id: peerId, ws, role: "sender" };
           currentRoomId = roomId;
           currentRole = "sender";
@@ -126,6 +128,31 @@ function attachSignaling(wss) {
 
         case "leave-room": {
           leaveCurrentRoom();
+          break;
+        }
+
+        case "cancel": {
+          // An intentional abort, distinct from a plain disconnect, so the
+          // other side can show "cancelled" instead of a generic drop. Does
+          // its own room cleanup (rather than calling leaveCurrentRoom) so
+          // the peer doesn't also get a follow-up "peer-left" for the same
+          // departure.
+          const { roomId } = msg;
+          const room = rooms.get(roomId);
+          if (room) {
+            if (currentRole === "sender" && room.sender?.id === peerId) {
+              room.sender = null;
+              for (const receiver of room.receivers.values()) {
+                send(receiver.ws, { type: "cancelled", by: "sender" });
+              }
+            } else if (currentRole === "receiver") {
+              room.receivers.delete(peerId);
+              if (room.sender) send(room.sender.ws, { type: "cancelled", by: "receiver" });
+            }
+            cleanupEmptyRoom(roomId);
+          }
+          currentRoomId = null;
+          currentRole = null;
           break;
         }
 
