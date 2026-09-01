@@ -54,9 +54,8 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
-  icons: {
-    icon: "/favicon.ico",
-  },
+  // No explicit `icons` field — app/icon.png (Ashwani Tiwari's logo) is
+  // picked up automatically by Next's file-convention favicon handling.
 };
 
 const jsonLd = {
