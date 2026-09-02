@@ -209,6 +209,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private transferActive = false;
   private receiveLastSampleTime = 0;
   private receiveLastSampleBytes = 0;
+  private candidateTypeCounts: Record<string, number> = {};
 
   private status: TransferStatus = "idle";
   private disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -359,11 +360,24 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   // ---- connection setup -------------------------------------------------
 
   private preparePeerConnection(): RTCPeerConnection {
+    // A fresh pc means fresh negotiation — clear any timers tied to a
+    // previous (now-abandoned) pc first, otherwise armGiveUpTimer()'s
+    // "already armed" guard would skip arming one for this new attempt.
+    this.clearTimers();
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.pc = pc;
+    this.candidateTypeCounts = {};
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && this.remotePeerId) {
+      if (!event.candidate) return;
+      // Tally which ICE candidate types actually got gathered (host,
+      // srflx via STUN, relay via TURN) — if "relay" never shows up here,
+      // the TURN server isn't reachable from this network at all, which
+      // is the single most useful fact for diagnosing a NAT failure.
+      const type = event.candidate.type ?? "unknown";
+      this.candidateTypeCounts[type] = (this.candidateTypeCounts[type] ?? 0) + 1;
+
+      if (this.remotePeerId) {
         this.signaling.sendSignal(
           this.roomId,
           { candidate: event.candidate.toJSON() },
@@ -373,12 +387,31 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     };
 
     pc.onconnectionstatechange = () => this.handleConnectionStateChange(pc);
+    pc.oniceconnectionstatechange = () => {
+      // eslint-disable-next-line no-console
+      console.debug(
+        `[PeerBridge] ICE connection state: ${pc.iceConnectionState} (candidates so far: ${this.candidateSummary()})`,
+      );
+    };
 
     if (this.role === "receiver") {
       pc.ondatachannel = (event) => this.attachChannel(event.channel);
     }
 
+    // Covers the case this connection never reaches "connected" *or*
+    // "failed"/"disconnected" at all — some networks silently drop every
+    // packet a candidate pair check sends, so the browser can sit in
+    // "checking" indefinitely without ever reporting a state change to
+    // react to. Without this, that hangs forever with no error shown.
+    this.armGiveUpTimer(pc);
+
     return pc;
+  }
+
+  private candidateSummary(): string {
+    const entries = Object.entries(this.candidateTypeCounts);
+    if (entries.length === 0) return "none yet";
+    return entries.map(([type, count]) => `${count} ${type}`).join(", ");
   }
 
   private handleConnectionStateChange(pc: RTCPeerConnection): void {
@@ -417,10 +450,31 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.reconnectGiveUpTimer = setTimeout(() => {
       this.reconnectGiveUpTimer = null;
       if (pc.connectionState !== "connected") {
+        const counts = this.candidateTypeCounts;
+        const hasRelay = (counts.relay ?? 0) > 0;
+        const hasAny = Object.keys(counts).length > 0;
+        let diagnosis: string;
+        if (!hasAny) {
+          diagnosis =
+            "No connection candidates were found at all — check that this network allows " +
+            "outbound UDP/TCP traffic (some corporate/public Wi-Fi networks block it entirely).";
+        } else if (!hasRelay) {
+          diagnosis =
+            "A relay (TURN) path was never found, even though other candidates were — the " +
+            "TURN server may be unreachable or blocked on this network.";
+        } else {
+          diagnosis =
+            "A relay path was found but the connection still didn't complete — this can " +
+            "happen with very restrictive firewalls on one or both sides.";
+        }
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[PeerBridge] Giving up after ${RECONNECT_GIVEUP_MS / 1000}s. ` +
+            `connectionState=${pc.connectionState} iceConnectionState=${pc.iceConnectionState} ` +
+            `candidates=${this.candidateSummary()}`,
+        );
         this.emit("error", {
-          message:
-            "Connection lost and couldn't be re-established — this can happen on strict " +
-            "NAT/firewall networks. Try again, ideally with both devices on the same Wi-Fi.",
+          message: `Couldn't establish a direct connection. ${diagnosis} Try again, ideally with both devices on the same Wi-Fi.`,
         });
         this.setStatus("error");
       }
