@@ -316,12 +316,32 @@ a sanity check.
 - No file data ever reaches either host — the server only relays SDP/ICE
   signaling messages between two browsers; the transfer itself is a
   direct WebRTC `RTCDataChannel` connection.
-- If a host sits behind a symmetric NAT/firewall that a plain STUN
-  handshake can't traverse, add a TURN server (e.g. `coturn`) and append
-  its `urls`/`username`/`credential` to `ICE_SERVERS` in
-  [lib/webrtc.ts](lib/webrtc.ts). This is the single biggest lever for
-  transfer reliability on restrictive networks — STUN alone (what's
-  configured by default) can't punch through every NAT type.
+- **Cross-network / international transfers need a TURN server —
+  STUN alone is not enough.** STUN only resolves "easy" NATs
+  (full-cone, restricted-cone); it cannot traverse symmetric NAT, which
+  is common on cellular/carrier networks and many corporate firewalls.
+  Two peers on genuinely different networks or countries hit this often
+  enough that without TURN, a real fraction of transfers will get stuck
+  showing "Connected" and never actually move data (the app now detects
+  this specific stuck state after ~18s and shows an error instead of
+  hanging silently — but a TURN server is the actual fix, not just
+  better error messaging).
+
+  1. Sign up for a free TURN provider — [Metered.ca](https://www.metered.ca/tools/openrelay/) has a generous free tier and the simplest setup; Cloudflare Calls and Twilio also work.
+  2. From their dashboard, get a TURN URL (or comma-separated list of `turn:`/`turns:` URLs for UDP/TCP/TLS variants), a username, and a credential.
+  3. Set three environment variables **on whichever host serves the frontend** (Vercel in Option C, or the single Render service in Option A/B — this is client-side WebRTC config, not backend):
+     ```
+     NEXT_PUBLIC_TURN_URLS=turn:standard.relay.metered.ca:80,turn:standard.relay.metered.ca:443
+     NEXT_PUBLIC_TURN_USERNAME=<from the provider>
+     NEXT_PUBLIC_TURN_CREDENTIAL=<from the provider>
+     ```
+  4. **Redeploy.** `NEXT_PUBLIC_*` variables are inlined into the client bundle at `next build` time, not read at runtime — setting them without rebuilding does nothing.
+  5. [lib/webrtc.ts](lib/webrtc.ts)'s `ICE_SERVERS` picks these up automatically once set (falls back to STUN-only, today's behavior, if they're unset).
+
+  Without this, PeerBridge still works great for same-network or
+  friendly-NAT transfers (most home Wi-Fi, most same-country transfers)
+  — TURN specifically matters for the harder cases this product is
+  explicitly meant to handle ("global, international" use).
 - A transfer survives brief network blips automatically: the sender
   pauses and resumes from the same byte offset, and a dropped
   `RTCPeerConnection` gets one automatic ICE-restart attempt before

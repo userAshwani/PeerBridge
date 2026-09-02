@@ -92,9 +92,15 @@ every `git push` to `main` once set up once:
 ## Known limitations
 
 - No TURN server is configured by default (STUN only), so a transfer
-  between two devices on strict/symmetric NATs (common on some
-  corporate or mobile-carrier networks) may not connect. Add a TURN
-  server and extend `ICE_SERVERS` in `lib/webrtc.ts` — see DEPLOY.md.
+  between two devices on strict/symmetric NATs — common on cellular
+  networks and many corporate firewalls, and common enough between
+  different countries that it matters for real international use —
+  may get stuck at "Connected" without a TURN relay configured. The
+  app detects that stuck state (~18s) and surfaces an error rather
+  than hanging silently, but TURN is the actual fix. Set
+  `NEXT_PUBLIC_TURN_URLS` / `_USERNAME` / `_CREDENTIAL` from a free
+  provider (Metered.ca, Cloudflare Calls) and redeploy — see
+  [DEPLOY.md](DEPLOY.md#notes-all-options) for the exact steps.
 - A transfer can't resume after either tab is closed or reloaded — since
   no file data is ever stored server-side, there's nothing to resume
   from once the browser holding it in memory is gone. It does survive

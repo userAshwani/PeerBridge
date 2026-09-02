@@ -31,11 +31,40 @@ const BUFFERED_AMOUNT_LOW_THRESHOLD = 1 * 1024 * 1024; // 1MB
 const MAX_BUFFERED_AMOUNT = 8 * 1024 * 1024; // pause sending above this
 const DISCONNECT_GRACE_MS = 6000; // tolerate brief ICE blips before restarting
 const RECONNECT_GIVEUP_MS = 30000; // fully fail if not back within this long
+const CONNECTED_STUCK_MS = 18000; // "connected" per ICE but no protocol progress
 
-export const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
+// STUN alone only resolves NAT type for "easy" NATs (full-cone, restricted-
+// cone) — it cannot traverse symmetric NAT, which is common on cellular/
+// carrier networks and many corporate firewalls. Two peers on different
+// networks/countries hit this often enough that a TURN relay fallback is
+// what actually makes cross-network transfers reliable; see DEPLOY.md.
+// Configure via NEXT_PUBLIC_TURN_URL(S) / _USERNAME / _CREDENTIAL — these
+// are build-time env vars (Next.js inlines NEXT_PUBLIC_* at build, not
+// runtime), so changing them requires a redeploy.
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+
+  const turnUrls = process.env.NEXT_PUBLIC_TURN_URLS;
+  const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+  const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+  if (turnUrls && turnUsername && turnCredential) {
+    const urls = turnUrls
+      .split(",")
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (urls.length > 0) {
+      servers.push({ urls, username: turnUsername, credential: turnCredential });
+    }
+  }
+
+  return servers;
+}
+
+export const ICE_SERVERS: RTCIceServer[] = buildIceServers();
 
 export type PeerRole = "sender" | "receiver";
 
@@ -156,6 +185,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private status: TransferStatus = "idle";
   private disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectGiveUpTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectedStuckTimer: ReturnType<typeof setTimeout> | null = null;
   private iceRestartInFlight = false;
   private intentionallyClosed = false;
 
@@ -375,6 +405,10 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     if (this.reconnectGiveUpTimer) {
       clearTimeout(this.reconnectGiveUpTimer);
       this.reconnectGiveUpTimer = null;
+    }
+    if (this.connectedStuckTimer) {
+      clearTimeout(this.connectedStuckTimer);
+      this.connectedStuckTimer = null;
     }
   }
 
@@ -713,6 +747,35 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     if (status === "completed" || status === "cancelled" || status === "rejected") {
       this.transferActive = false;
     }
+
+    // "connected" means ICE/DTLS came up — it does NOT guarantee the data
+    // channel can actually deliver messages. On a symmetric-NAT/strict-
+    // firewall network (common when sender and receiver are on different
+    // networks or countries), the connection can nominate a candidate pair
+    // that never delivers a single byte, leaving both sides silently
+    // parked on "Connected" forever. Watch for exactly that: if nothing
+    // moves the status past "connected" in time, surface a real error
+    // instead of hanging.
+    if (this.connectedStuckTimer) {
+      clearTimeout(this.connectedStuckTimer);
+      this.connectedStuckTimer = null;
+    }
+    if (status === "connected") {
+      this.connectedStuckTimer = setTimeout(() => {
+        this.connectedStuckTimer = null;
+        if (this.status === "connected") {
+          this.emit("error", {
+            message:
+              "Connected, but no data is arriving — this usually means a strict NAT " +
+              "or firewall is blocking the direct link between these two networks. " +
+              "Try both devices on the same Wi-Fi, or ask the site owner to add a " +
+              "TURN relay server.",
+          });
+          this.setStatus("error");
+        }
+      }, CONNECTED_STUCK_MS);
+    }
+
     this.status = status;
     this.emit("status", status);
   }
