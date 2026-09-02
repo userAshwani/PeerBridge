@@ -456,12 +456,13 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         let diagnosis: string;
         if (!hasAny) {
           diagnosis =
-            "No connection candidates were found at all — check that this network allows " +
-            "outbound UDP/TCP traffic (some corporate/public Wi-Fi networks block it entirely).";
+            "No connection candidates were found at all on your side — this network is " +
+            "blocking outbound UDP/TCP traffic entirely (common on some corporate/public " +
+            "Wi-Fi). Try a different network, e.g. mobile data.";
         } else if (!hasRelay) {
           diagnosis =
-            "A relay (TURN) path was never found, even though other candidates were — the " +
-            "TURN server may be unreachable or blocked on this network.";
+            "A relay (TURN) server is required for this connection but couldn't be reached. " +
+            "This is a server-side configuration issue, not something you can fix on your end.";
         } else {
           diagnosis =
             "A relay path was found but the connection still didn't complete — this can " +
@@ -474,7 +475,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
             `candidates=${this.candidateSummary()}`,
         );
         this.emit("error", {
-          message: `Couldn't establish a direct connection. ${diagnosis} Try again, ideally with both devices on the same Wi-Fi.`,
+          message: `Couldn't establish a connection. ${diagnosis}`,
         });
         this.setStatus("error");
       }
@@ -874,9 +875,9 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
           this.emit("error", {
             message:
               "Connected, but no data is arriving — this usually means a strict NAT " +
-              "or firewall is blocking the direct link between these two networks. " +
-              "Try both devices on the same Wi-Fi, or ask the site owner to add a " +
-              "TURN relay server.",
+              "or firewall is blocking the direct link between these two networks and " +
+              "the relay (TURN) server isn't picking up the slack. This is a server-side " +
+              "configuration issue, not something you can fix on your end.",
           });
           this.setStatus("error");
         }
