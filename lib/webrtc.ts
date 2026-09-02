@@ -134,6 +134,22 @@ export interface TransferProgress {
   currentFileIndex: number;
   currentFileName: string;
   fileCount: number;
+  /** Bytes transferred for just the file currently in flight — for a
+   * per-file "parts" progress display, as opposed to `bytesTransferred`
+   * above, which is a running total across the whole batch. */
+  currentFileBytesTransferred: number;
+  currentFileTotalBytes: number;
+}
+
+/** Sender-side only: the receiver's own confirmed progress on the file it's
+ * currently receiving, reported back over the data channel — distinct from
+ * (and typically lagging slightly behind) the sender's own `progress` event,
+ * which only reflects what's been handed to the RTCDataChannel locally, not
+ * what the other side has actually received and written. */
+export interface ReceiverFileProgress {
+  currentFileIndex: number;
+  currentFileBytesTransferred: number;
+  currentFileTotalBytes: number;
 }
 
 export interface CompletedFileResult {
@@ -152,6 +168,7 @@ export interface CompletedTransfer {
 interface TransferEvents {
   status: TransferStatus;
   progress: TransferProgress;
+  "receiver-progress": ReceiverFileProgress;
   "incoming-batch": IncomingBatch;
   completed: CompletedTransfer;
   /** Fatal problems: connection failures, integrity mismatches, signaling errors. */
@@ -166,7 +183,8 @@ type DataChannelMessage =
   | { type: "reject" }
   | { type: "file-start"; index: number }
   | { type: "file-end"; index: number; sha256: string }
-  | { type: "batch-end" };
+  | { type: "batch-end" }
+  | { type: "receiver-progress"; index: number; bytesTransferred: number; totalBytes: number };
 
 /** Per-file receive state. Created fresh on every "file-start" and passed
  * by reference to whatever needs it, rather than read back off shared
@@ -194,6 +212,9 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private incomingFiles: FileMeta[] = [];
   private totalIncomingBytes = 0;
   private receivedBytesTotal = 0;
+  /** `receivedBytesTotal` as of the current file's "file-start" — subtracting
+   * this out gives bytes received for just the in-flight file. */
+  private fileStartCumulativeBytes = 0;
   private currentFileIndex = -1;
   private currentSlot: ReceiveSlot | null = null;
   private pendingFileFinishes: Promise<void>[] = [];
@@ -629,11 +650,21 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
           break;
         case "file-start": {
           this.currentFileIndex = msg.index;
+          this.fileStartCumulativeBytes = this.receivedBytesTotal;
           const slot: ReceiveSlot = { writeQueue: Promise.resolve(), writable: null, fileHandle: null, chunks: [] };
           slot.writeQueue = this.prepareFileTarget(msg.index, slot);
           this.currentSlot = slot;
           break;
         }
+        case "receiver-progress":
+          // Sender side only: the receiver's own confirmed progress on the
+          // file it's currently receiving.
+          this.emit("receiver-progress", {
+            currentFileIndex: msg.index,
+            currentFileBytesTransferred: msg.bytesTransferred,
+            currentFileTotalBytes: msg.totalBytes,
+          });
+          break;
         case "file-end": {
           // Capture the slot synchronously — by the time this async call
           // resolves, "file-start" for the next file may already have
@@ -667,16 +698,46 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     // "accept" status update ever raced with the first chunk arriving.
     if (this.status !== "transferring") this.setStatus("transferring");
 
+    const currentFileBytesTransferred = this.receivedBytesTotal - this.fileStartCumulativeBytes;
+    const currentFileTotalBytes = this.incomingFiles[this.currentFileIndex]?.size ?? 0;
+
+    // Tells the sender how much of the current file has actually arrived
+    // and been queued for writing on this end — distinct from the sender's
+    // own view of its send progress, which only reflects what's been
+    // handed to the RTCDataChannel locally, not confirmed received here.
+    const reportToSender = () => {
+      this.sendControl({
+        type: "receiver-progress",
+        index: this.currentFileIndex,
+        bytesTransferred: currentFileBytesTransferred,
+        totalBytes: currentFileTotalBytes,
+      });
+    };
+
     const now = performance.now();
     if (this.receiveLastSampleTime === 0) {
       this.receiveLastSampleTime = now;
       this.receiveLastSampleBytes = this.receivedBytesTotal;
-      this.reportProgress(this.receivedBytesTotal, this.totalIncomingBytes, 0);
+      this.reportProgress(
+        this.receivedBytesTotal,
+        this.totalIncomingBytes,
+        0,
+        currentFileBytesTransferred,
+        currentFileTotalBytes,
+      );
+      reportToSender();
     } else if (now - this.receiveLastSampleTime >= 200 || this.receivedBytesTotal >= this.totalIncomingBytes) {
       const speedBps =
         ((this.receivedBytesTotal - this.receiveLastSampleBytes) / (now - this.receiveLastSampleTime)) *
           1000 || 0;
-      this.reportProgress(this.receivedBytesTotal, this.totalIncomingBytes, speedBps);
+      this.reportProgress(
+        this.receivedBytesTotal,
+        this.totalIncomingBytes,
+        speedBps,
+        currentFileBytesTransferred,
+        currentFileTotalBytes,
+      );
+      reportToSender();
       this.receiveLastSampleTime = now;
       this.receiveLastSampleBytes = this.receivedBytesTotal;
     }
@@ -816,7 +877,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         const totalSoFar = sentBytes + offset;
         if (now - lastSampleTime >= 200 || offset === file.size) {
           const speedBps = ((totalSoFar - lastSampleBytes) / (now - lastSampleTime)) * 1000 || 0;
-          this.reportProgress(totalSoFar, totalBytes, speedBps);
+          this.reportProgress(totalSoFar, totalBytes, speedBps, offset, file.size);
           lastSampleTime = now;
           lastSampleBytes = totalSoFar;
         }
@@ -860,7 +921,13 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     return list[this.currentFileIndex] ?? "";
   }
 
-  private reportProgress(bytesTransferred: number, totalBytes: number, speedBps = 0): void {
+  private reportProgress(
+    bytesTransferred: number,
+    totalBytes: number,
+    speedBps = 0,
+    currentFileBytesTransferred = 0,
+    currentFileTotalBytes = 0,
+  ): void {
     const remaining = totalBytes - bytesTransferred;
     const etaSeconds = speedBps > 0 ? remaining / speedBps : null;
     this.emit("progress", {
@@ -872,6 +939,8 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       currentFileIndex: this.currentFileIndex,
       currentFileName: this.currentFileName(),
       fileCount: this.role === "sender" ? this.files.length : this.incomingFiles.length,
+      currentFileBytesTransferred,
+      currentFileTotalBytes,
     });
   }
 

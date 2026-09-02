@@ -4,6 +4,7 @@ import { use, useEffect, useRef } from "react";
 import { CheckCircle2, XCircle, Files, ShieldAlert, Download, HardDrive } from "lucide-react";
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
+import { PartsProgress } from "@/components/PartsProgress";
 import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
 import { formatBytes, formatDuration, formatSpeed } from "@/lib/format";
@@ -145,6 +146,14 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
                 {formatDuration(progress.etaSeconds)}
               </p>
             )}
+
+            <div className="mt-4">
+              <PartsProgress
+                label="Downloading"
+                bytesTransferred={progress.currentFileBytesTransferred}
+                totalBytes={progress.currentFileTotalBytes}
+              />
+            </div>
           </div>
         )}
 

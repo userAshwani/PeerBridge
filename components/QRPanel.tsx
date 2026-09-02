@@ -2,18 +2,20 @@
 
 import { QRCodeSVG } from "qrcode.react";
 import { Copy, Check, Share2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+
+// navigator.share() only exists in the browser, and its availability never
+// changes after load — useSyncExternalStore is the correct tool for exactly
+// this "client-only feature check" case: it renders `false` (matching SSR)
+// on the initial pass, then re-renders with the real value right after
+// hydration, with no manual effect/setState needed.
+const noopSubscribe = () => () => {};
+const getCanShareSnapshot = () => typeof navigator !== "undefined" && typeof navigator.share === "function";
+const getServerSnapshot = () => false;
 
 export function QRPanel({ roomId, shareUrl }: { roomId: string; shareUrl: string }) {
   const [copied, setCopied] = useState(false);
-  // Checked in an effect (not inline) so the server-rendered markup always
-  // matches the client's first render — navigator.share isn't available
-  // during SSR, and checking it inline would mismatch and warn/flash.
-  const [canShare, setCanShare] = useState(false);
-
-  useEffect(() => {
-    setCanShare(typeof navigator.share === "function");
-  }, []);
+  const canShare = useSyncExternalStore(noopSubscribe, getCanShareSnapshot, getServerSnapshot);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(shareUrl);

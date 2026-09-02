@@ -6,6 +6,7 @@ import {
   IncomingBatch,
   PeerRole,
   PeerTransferSession,
+  ReceiverFileProgress,
   TransferProgress,
   TransferStatus,
 } from "@/lib/webrtc";
@@ -14,6 +15,9 @@ import { DroppedFile } from "@/lib/collect-files";
 export interface UsePeerTransferResult {
   status: TransferStatus;
   progress: TransferProgress | null;
+  /** Sender only: the receiver's own confirmed progress on the file it's
+   * currently receiving — null until the first report arrives. */
+  receiverProgress: ReceiverFileProgress | null;
   incomingBatch: IncomingBatch | null;
   completed: CompletedTransfer | null;
   errorMessage: string | null;
@@ -28,6 +32,7 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
   const sessionRef = useRef<PeerTransferSession | null>(null);
   const [status, setStatus] = useState<TransferStatus>("idle");
   const [progress, setProgress] = useState<TransferProgress | null>(null);
+  const [receiverProgress, setReceiverProgress] = useState<ReceiverFileProgress | null>(null);
   const [incomingBatch, setIncomingBatch] = useState<IncomingBatch | null>(null);
   const [completed, setCompleted] = useState<CompletedTransfer | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -45,6 +50,7 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
       if (s !== "closed" && s !== "cancelled") setNoticeMessage(null);
     });
     session.on("progress", setProgress);
+    session.on("receiver-progress", setReceiverProgress);
     session.on("incoming-batch", setIncomingBatch);
     session.on("completed", setCompleted);
     session.on("error", ({ message }) => setErrorMessage(message));
@@ -77,6 +83,7 @@ export function usePeerTransfer(roomId: string | null, role: PeerRole): UsePeerT
   return {
     status,
     progress,
+    receiverProgress,
     incomingBatch,
     completed,
     errorMessage,

@@ -8,6 +8,7 @@ import { DropZone } from "@/components/DropZone";
 import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
+import { PartsProgress } from "@/components/PartsProgress";
 import { HeroIllustration } from "@/components/HeroIllustration";
 import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
@@ -26,6 +27,7 @@ export default function Home() {
   const {
     status,
     progress,
+    receiverProgress,
     completed,
     errorMessage,
     noticeMessage,
@@ -147,6 +149,21 @@ export default function Home() {
                         {formatDuration(progress.etaSeconds)}
                       </p>
                     )}
+
+                    <div className="mt-4 flex flex-col gap-3">
+                      <PartsProgress
+                        label="Sending"
+                        bytesTransferred={progress.currentFileBytesTransferred}
+                        totalBytes={progress.currentFileTotalBytes}
+                      />
+                      {receiverProgress && receiverProgress.currentFileIndex === progress.currentFileIndex && (
+                        <PartsProgress
+                          label="Received by peer"
+                          bytesTransferred={receiverProgress.currentFileBytesTransferred}
+                          totalBytes={receiverProgress.currentFileTotalBytes}
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
 
