@@ -331,13 +331,24 @@ a sanity check.
   credentials for exactly this purpose. This means cross-network
   transfers work out of the box with no setup. It is, however, a
   **shared, rate-limited, no-uptime-guarantee** resource — fine for
-  getting started or moderate use, not something to lean on at real
-  scale. For production reliability, get your own free-tier TURN
-  credentials and override the default:
+  getting started, not something to lean on at real scale (confirmed in
+  practice: real India↔USA transfers hit exactly this — see
+  [TURN-SETUP.md](TURN-SETUP.md)). For production reliability, get your
+  own TURN server and override the default:
 
-  1. Sign up at [Metered.ca](https://www.metered.ca/tools/openrelay/) (generous free tier, simplest setup) — or Cloudflare Calls / Twilio.
-  2. From their dashboard, get a TURN URL (or comma-separated list of `turn:`/`turns:` URLs for UDP/TCP/TLS variants), a username, and a credential.
-  3. Set three environment variables **on whichever host serves the frontend** (Vercel in Option C, or the single Render service in Option A/B — this is client-side WebRTC config, not backend):
+  - **Recommended, $0 extra cost:** self-host `coturn` on your own VPS
+    — see [TURN-SETUP.md](TURN-SETUP.md) for the full step-by-step
+    guide. Relay traffic just counts against that VPS's own bandwidth,
+    no third-party per-GB billing.
+  - Or a hosted provider: Metered.ca (free up to 50GB/month, then
+    billed) or Cloudflare Realtime TURN (**not free** for this use case
+    — it's only free paired with Cloudflare's SFU; standalone it's
+    $0.05/GB with no free quota).
+
+  Whichever TURN server you end up with, set three environment
+  variables **on whichever host serves the frontend** (Vercel in
+  Option C, or the single Render service in Option A/B — this is
+  client-side WebRTC config, not backend):
      ```
      NEXT_PUBLIC_TURN_URLS=turn:standard.relay.metered.ca:80,turn:standard.relay.metered.ca:443
      NEXT_PUBLIC_TURN_USERNAME=<from the provider>
