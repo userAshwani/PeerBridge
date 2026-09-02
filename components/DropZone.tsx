@@ -51,7 +51,7 @@ export function DropZone({
     >
       <div
         className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${
-          disabled ? "bg-zinc-200" : "bg-gradient-to-br from-brand-400 to-brand-600 shadow-md"
+          disabled ? "bg-zinc-200" : "bg-brand-600 shadow-md"
         }`}
       >
         {disabled ? (

@@ -38,22 +38,25 @@ export function QRPanel({ roomId, shareUrl }: { roomId: string; shareUrl: string
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-gradient-to-b from-zinc-50 to-white p-6 shadow-sm">
+    <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
       <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-inner">
         <QRCodeSVG
           value={shareUrl}
           size={160}
           bgColor="#ffffff"
           fgColor="#18181b"
-          // "H" (30% error correction) is required to embed a logo this
-          // size without the QR code becoming unscannable — excavate
-          // clears the modules directly under it rather than overlaying,
-          // which scans more reliably than a plain overlay.
+          // "H" (30% error correction) is the ceiling for how much of the
+          // code can be excavated for a logo and still scan reliably —
+          // 40px on a 160px code (25%) is a deliberately-picked upper
+          // bound within that: bigger reads clearly, but pushing past
+          // this starts risking real-world scans (a worn phone camera,
+          // low light) even though the math says more is technically
+          // possible.
           level="H"
           imageSettings={{
             src: LOGO_URL,
-            height: 32,
-            width: 32,
+            height: 40,
+            width: 40,
             excavate: true,
           }}
         />
@@ -68,7 +71,7 @@ export function QRPanel({ roomId, shareUrl }: { roomId: string; shareUrl: string
         {canShare && (
           <button
             onClick={handleShare}
-            className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-2 text-xs font-medium text-white shadow-sm shadow-brand-500/30 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-xs font-medium text-white shadow-sm shadow-brand-500/30 transition-colors hover:bg-brand-700"
           >
             <Share2 className="h-3.5 w-3.5" />
             Share

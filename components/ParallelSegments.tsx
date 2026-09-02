@@ -24,7 +24,7 @@ export function ParallelSegments({ label, segments }: { label: string; segments:
               title={`Connection ${seg.connId + 1}`}
             >
               <div
-                className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-200"
+                className="h-full rounded-full bg-brand-600 transition-all duration-200"
                 style={{ width: `${percent}%` }}
               />
             </div>

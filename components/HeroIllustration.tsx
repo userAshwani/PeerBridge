@@ -11,11 +11,7 @@ export function HeroIllustration() {
     <div className="relative mx-auto aspect-square w-full max-w-lg">
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[2.5rem] border border-white/20 bg-white/10 backdrop-blur-xl"
-      />
-      <div
-        aria-hidden
-        className="absolute inset-8 rounded-[2rem] bg-gradient-to-br from-white/10 to-transparent"
+        className="absolute inset-0 rounded-[2.5rem] border border-white/15 bg-white/[0.06] backdrop-blur-xl"
       />
 
       <svg
@@ -24,24 +20,13 @@ export function HeroIllustration() {
         role="img"
         aria-label="Two devices exchanging an encrypted file directly, peer to peer"
       >
-        <defs>
-          <linearGradient id="deviceA" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="100%" stopColor="#d6dcff" />
-          </linearGradient>
-          <linearGradient id="deviceB" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="100%" stopColor="#a8b4ff" />
-          </linearGradient>
-        </defs>
-
         {/* left device */}
-        <rect x="36" y="120" width="92" height="160" rx="16" fill="url(#deviceA)" />
+        <rect x="36" y="120" width="92" height="160" rx="16" fill="#ffffff" />
         <rect x="50" y="136" width="64" height="98" rx="4" fill="#5368fd" fillOpacity="0.15" />
         <circle cx="82" cy="252" r="5" fill="#5368fd" fillOpacity="0.4" />
 
         {/* right device */}
-        <rect x="272" y="120" width="92" height="160" rx="16" fill="url(#deviceB)" />
+        <rect x="272" y="120" width="92" height="160" rx="16" fill="#e7eaff" />
         <rect x="286" y="136" width="64" height="98" rx="4" fill="#5368fd" fillOpacity="0.15" />
         <circle cx="318" cy="252" r="5" fill="#5368fd" fillOpacity="0.4" />
 

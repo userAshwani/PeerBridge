@@ -40,7 +40,7 @@ export function PartsProgress({
             <div key={i} className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-200">
               <div
                 className={`h-full rounded-full transition-all duration-200 ${
-                  isDone ? "bg-gradient-to-r from-brand-400 to-brand-600" : "bg-brand-400"
+                  isDone ? "bg-brand-600" : "bg-brand-400"
                 }`}
                 style={{ width: isDone ? "100%" : isCurrent ? `${currentPartFraction * 100}%` : "0%" }}
               />

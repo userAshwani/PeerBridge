@@ -24,12 +24,12 @@ export function TransferAnimation({ status }: { status: TransferStatus }) {
       <div className="absolute left-[14%] right-[14%] top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-zinc-200" />
 
       <div
-        className={`absolute left-[6%] top-1/2 h-11 w-11 -translate-y-1/2 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-500 shadow-md transition-opacity ${
+        className={`absolute left-[6%] top-1/2 h-11 w-11 -translate-y-1/2 rounded-2xl bg-brand-500 shadow-md transition-opacity ${
           phase === "paused" ? "opacity-40" : ""
         } ${phase === "idle" ? "animate-pulse" : ""}`}
       />
       <div
-        className={`absolute right-[6%] top-1/2 h-11 w-11 -translate-y-1/2 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-800 shadow-md transition-opacity ${
+        className={`absolute right-[6%] top-1/2 h-11 w-11 -translate-y-1/2 rounded-2xl bg-brand-700 shadow-md transition-opacity ${
           phase === "paused" ? "opacity-40" : ""
         } ${phase === "idle" ? "animate-pulse" : ""}`}
       />

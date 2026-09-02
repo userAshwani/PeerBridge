@@ -95,7 +95,7 @@ export default function Home() {
                   />
                   <button
                     type="submit"
-                    className="flex items-center justify-center gap-1 rounded-full bg-gradient-to-r from-brand-500 to-brand-700 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-brand-500/30 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                    className="flex items-center justify-center gap-1 rounded-full bg-brand-600 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-brand-500/30 transition-colors hover:bg-brand-700"
                   >
                     Join <ArrowRight className="h-4 w-4" />
                   </button>
@@ -203,20 +203,28 @@ export default function Home() {
           </Link>
         </div>
 
-        {/* Branding panel — decorative, no functional UI */}
-        <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 lg:flex lg:min-h-[640px] lg:items-center lg:justify-center">
+        {/* Branding panel — decorative, no functional UI. Solid near-black
+            rather than a colored gradient, with a single soft spotlight
+            (one-stop radial blur, not a full-surface gradient) for depth —
+            the glassmorphic illustration and dot-grid do the rest. */}
+        <div className="relative hidden overflow-hidden bg-zinc-950 lg:flex lg:min-h-[640px] lg:items-center lg:justify-center">
           <div
             aria-hidden
-            className="pointer-events-none absolute -top-24 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-white/10 blur-3xl"
+            className="pointer-events-none absolute -top-24 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-brand-500/10 blur-[100px]"
           />
-          <div aria-hidden className="bg-dot-grid pointer-events-none absolute inset-0 opacity-[0.08]" />
+          <div aria-hidden className="bg-dot-grid pointer-events-none absolute inset-0 opacity-[0.06]" />
           <div className="relative w-full max-w-md px-10">
             <HeroIllustration />
-            <p className="mt-10 text-center text-lg font-semibold text-white">
-              Photos, videos, documents, entire folders —
-              <br />
-              straight from your device to theirs.
-            </p>
+            <div className="mt-10 text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-brand-400">
+                Zero-cloud &middot; peer-to-peer
+              </p>
+              <p className="mt-3 text-xl font-bold leading-snug text-white">
+                Photos, videos, documents, entire folders —
+                <br />
+                straight from your device to theirs.
+              </p>
+            </div>
           </div>
         </div>
       </div>
