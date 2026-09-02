@@ -8,6 +8,12 @@ server only ever relays a room code and connection-setup metadata
 
 Live at **[transfer.ashwanitiwari.com](https://transfer.ashwanitiwari.com)**, a free tool from [ashwanitiwari.com](https://ashwanitiwari.com). Questions or feedback: [ashwanitiwari.com/contact](https://ashwanitiwari.com/contact) or dev.ashwanitiwari@gmail.com.
 
+Building a mobile client? See **[MOBILE-APP-SPEC.md](MOBILE-APP-SPEC.md)**
+— a complete porting spec (signaling protocol, wire format, security
+model, React Native library recommendations) written to hand directly
+to an AI coding assistant building a React Native app that
+interoperates with this one.
+
 ---
 
 ## Architecture
@@ -136,15 +142,15 @@ of (not a substitute for) the transport encryption above.
 
 ### Homepage — drop a file or folder
 
-*(screenshot here)*
+![alt text](image.png)
 
 ### Room code, QR, and share panel
 
-*(screenshot here)*
+![alt text](image-1.png)
 
 ### Receiver — incoming file review / accept
 
-*(screenshot here)*
+![alt text](image-2.png)
 
 ### Transfer in progress
 
