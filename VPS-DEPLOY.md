@@ -32,8 +32,14 @@ Wait for it to resolve before continuing — `ping transfer.ashwanitiwari.com`.
 
 ## 3. Deploy the code over SSH
 
+You can log in as **either** the CloudPanel site user (`ashwanitiwari-transfer`,
+password from the creation screen) **or root** — both work, but use
+the site user for this app so files under `htdocs/` end up owned by
+the account CloudPanel/Nginx expects; only reach for `root` if a
+command specifically needs it (e.g. `apt install`, editing `ufw`).
+
 ```bash
-ssh <site-user>@<your-vps-ip>
+ssh ashwanitiwari-transfer@<your-vps-ip>
 cd ~/htdocs/transfer.ashwanitiwari.com
 
 # CloudPanel may drop a placeholder file here — clear it first
@@ -51,16 +57,22 @@ needed to build, not to run — same reason this was needed on Render.
 ## 4. Set the app port and start it with PM2
 
 1. In CloudPanel, open the site → **Node.js** tab → set **App Port**
-   to `3000` (or any free port — just remember it, it has to match
-   step below). Save — this updates CloudPanel's Nginx vhost to proxy
-   the domain to `127.0.0.1:3000`.
+   to a port not already used by another site on this VPS (CloudPanel
+   will reject a duplicate — `3000` is commonly taken by the first
+   Node site, e.g. `ashwanitiwari.com`; pick something free like
+   `3001`). Remember it, it has to match the step below. Save — this
+   updates CloudPanel's Nginx vhost to proxy the domain to
+   `127.0.0.1:<port>`.
 2. Back over SSH:
    ```bash
    npm install -g pm2
-   PORT=3000 pm2 start npm --name peerbridge -- start
+   PORT=3001 pm2 start npm --name peerbridge -- start
    pm2 save
    pm2 startup   # prints one sudo command — copy-paste and run it
    ```
+   Replace `3001` with whatever port you actually set in step 1 — it
+   must match exactly, since that's what CloudPanel's Nginx proxies
+   to.
    `pm2 startup` + `pm2 save` makes the app survive a VPS reboot.
 
 ## 5. Enable SSL
