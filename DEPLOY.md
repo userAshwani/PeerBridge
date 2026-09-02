@@ -1,6 +1,12 @@
 # Deploying PeerBridge
 
-Three supported paths:
+**Currently live**: [VPS-DEPLOY.md](VPS-DEPLOY.md) — a Hostinger VPS
+managed with CloudPanel, running the whole app as one Node process
+plus a self-hosted TURN relay ([TURN-SETUP.md](TURN-SETUP.md)). Vercel
+and Render are no longer used. The options below are kept for
+reference/rollback only.
+
+Three (legacy) supported paths:
 
 - **[Option A: Render (free tier)](#option-a-render-free-tier)** — no server to manage, single Node web service, custom domain + free SSL.
 - **[Option B: VPS with Docker + Nginx](#option-b-vps-with-docker--nginx)** — full control, no cold starts, no free-tier sleep.
