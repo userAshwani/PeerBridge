@@ -61,6 +61,7 @@ const DISCONNECT_GRACE_MS = 6000; // tolerate brief ICE blips before restarting
 const RECONNECT_GIVEUP_MS = 30000; // fully fail if not back within this long
 const CONNECTED_STUCK_MS = 18000; // "connected" per ICE but no protocol progress
 const PEER_LEFT_GRACE_MS = 6000; // tolerate a signaling blip before declaring the peer gone
+const TRANSFER_STALL_MS = 15000; // status says "transferring" but no bytes have actually moved
 
 // Parallel-connection ("download in parts") tuning. Each additional
 // connection is a full extra ICE negotiation and, when a direct path isn't
@@ -353,6 +354,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private reconnectGiveUpTimer: ReturnType<typeof setTimeout> | null = null;
   private connectedStuckTimer: ReturnType<typeof setTimeout> | null = null;
   private peerLeftGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  private transferStallTimer: ReturnType<typeof setTimeout> | null = null;
   private iceRestartInFlight = false;
   private intentionallyClosed = false;
 
@@ -486,6 +488,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
 
     this.transferActive = true;
     this.setStatus("transferring");
+    this.armTransferStallWatchdog();
     this.sendControl({ type: "accept" });
   }
 
@@ -682,12 +685,48 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       this.connectedStuckTimer = null;
     }
     this.clearPeerLeftGrace();
+    this.clearTransferStallWatchdog();
   }
 
   private clearPeerLeftGrace(): void {
     if (this.peerLeftGraceTimer) {
       clearTimeout(this.peerLeftGraceTimer);
       this.peerLeftGraceTimer = null;
+    }
+  }
+
+  /** Re-armed on every chunk actually sent or received. If it ever fires
+   * while status is still "transferring", nothing has moved for
+   * TRANSFER_STALL_MS despite the connection reporting as open — surfaces
+   * that as a real error instead of an indefinite silent hang. Doesn't
+   * fire on legitimately fast/small transfers: finishing moves status past
+   * "transferring" well before the timer would ever go off. */
+  private armTransferStallWatchdog(): void {
+    if (this.transferStallTimer) clearTimeout(this.transferStallTimer);
+    this.transferStallTimer = setTimeout(() => {
+      this.transferStallTimer = null;
+      if (this.status === "transferring" && !this.intentionallyClosed) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[PeerBridge] Transfer stalled: no bytes moved in ${TRANSFER_STALL_MS / 1000}s ` +
+            `while status=transferring (channel=${this.channel?.readyState}).`,
+        );
+        this.emit("error", {
+          message:
+            `No data has moved in ${TRANSFER_STALL_MS / 1000} seconds, even though the ` +
+            "connection is open. This usually means the data channel is silently " +
+            "blocked by a strict firewall on one side — try again, ideally on a " +
+            "different network.",
+        });
+        this.setStatus("error");
+      }
+    }, TRANSFER_STALL_MS);
+  }
+
+  private clearTransferStallWatchdog(): void {
+    if (this.transferStallTimer) {
+      clearTimeout(this.transferStallTimer);
+      this.transferStallTimer = null;
     }
   }
 
@@ -954,6 +993,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private handleIncomingChunk(rawBuffer: ArrayBuffer): void {
     const { connId, position, payload } = decodeChunk(rawBuffer);
     this.receivedBytesTotal += payload.byteLength;
+    this.armTransferStallWatchdog();
 
     const slot = this.currentSlot;
     if (slot) {
@@ -1139,6 +1179,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     if (!channel) return;
 
     this.setStatus("transferring");
+    this.armTransferStallWatchdog();
     const totalBytes = this.files.reduce((sum, { file }) => sum + file.size, 0);
     let sentBytes = 0;
 
@@ -1214,6 +1255,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         continue;
       }
       offset += raw.byteLength;
+      this.armTransferStallWatchdog();
 
       const now = performance.now();
       const totalSoFar = sentBytesBefore + offset;
@@ -1293,6 +1335,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         }
         offset += raw.byteLength;
         segmentOffsets.set(segment.connId, offset);
+        this.armTransferStallWatchdog();
         reportCombined();
       }
     };
