@@ -2,11 +2,11 @@ import Link from "next/link";
 import { LOGO_URL, PARENT_SITE_URL, SITE_NAME } from "@/lib/constants";
 
 const NAV_LINKS = [
-  { href: "#features", label: "Features" },
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#pricing", label: "Pricing" },
-  { href: "#faq", label: "FAQ" },
-  { href: "#contact", label: "Contact" },
+  { href: "/explore#features", label: "Features" },
+  { href: "/explore#how-it-works", label: "How it works" },
+  { href: "/explore#pricing", label: "Pricing" },
+  { href: "/explore#faq", label: "FAQ" },
+  { href: "/explore#contact", label: "Contact" },
 ];
 
 export function SiteHeader() {

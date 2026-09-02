@@ -25,7 +25,7 @@ export function About() {
             </p>
           </div>
           <a
-            href="#transfer"
+            href="/"
             className="mt-6 inline-block text-sm font-bold uppercase tracking-wide text-brand-500 hover:text-brand-700"
           >
             Get started →
