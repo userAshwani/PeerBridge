@@ -33,16 +33,44 @@ export function getSignalingUrl(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
+const MAX_RECONNECT_DELAY_MS = 8000;
+
 export class SignalingClient extends Emitter<SignalingEvents> {
   private ws: WebSocket | null = null;
+  private url = "";
+  private intentionalClose = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempt = 0;
 
+  /**
+   * Opens the signaling socket and keeps it open: an unexpected drop (a
+   * free-tier host restarting/cold-sleeping mid-negotiation is a real,
+   * observed cause — not just NAT traversal) triggers a backoff reconnect
+   * rather than leaving the session stuck. Reconnecting re-emits "open",
+   * which re-triggers whatever create-room/join-room the caller already
+   * wired up to that event — no separate resume logic needed.
+   */
   connect(url: string = getSignalingUrl()): void {
-    this.ws = new WebSocket(url);
+    this.intentionalClose = false;
+    this.reconnectAttempt = 0;
+    this.url = url;
+    this.openSocket();
+  }
 
-    this.ws.onopen = () => this.emit("open", undefined);
-    this.ws.onclose = () => this.emit("close", undefined);
-    this.ws.onerror = () => this.emit("error", { message: "WebSocket error" });
-    this.ws.onmessage = (event) => {
+  private openSocket(): void {
+    const ws = new WebSocket(this.url);
+    this.ws = ws;
+
+    ws.onopen = () => {
+      this.reconnectAttempt = 0;
+      this.emit("open", undefined);
+    };
+    ws.onclose = () => {
+      this.emit("close", undefined);
+      if (!this.intentionalClose) this.scheduleReconnect();
+    };
+    ws.onerror = () => this.emit("error", { message: "WebSocket error" });
+    ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
         this.emit(msg.type, msg);
@@ -50,6 +78,16 @@ export class SignalingClient extends Emitter<SignalingEvents> {
         this.emit("error", { message: "Malformed signaling message" });
       }
     };
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer) return;
+    const delay = Math.min(1000 * 2 ** this.reconnectAttempt, MAX_RECONNECT_DELAY_MS);
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.intentionalClose) this.openSocket();
+    }, delay);
   }
 
   private send(payload: Record<string, unknown>): void {
@@ -85,6 +123,11 @@ export class SignalingClient extends Emitter<SignalingEvents> {
   }
 
   close(): void {
+    this.intentionalClose = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
     this.ws = null;
     this.removeAllListeners();

@@ -92,6 +92,16 @@ function attachSignaling(wss) {
           currentRoomId = roomId;
           currentRole = "sender";
           send(ws, { type: "room-created", roomId, peerId });
+
+          // Reclaiming a room that already had one or more receivers
+          // waiting (e.g. this sender's own signaling socket dropped and
+          // reconnected mid-negotiation) — those receivers joined before
+          // this socket existed, so without this they'd never learn a
+          // sender came back and would just sit there. Tell the sender
+          // about each one as if they'd just joined.
+          for (const receiver of room.receivers.values()) {
+            send(ws, { type: "peer-joined", peerId: receiver.id, role: "receiver" });
+          }
           break;
         }
 

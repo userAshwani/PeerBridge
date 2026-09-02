@@ -32,6 +32,7 @@ const MAX_BUFFERED_AMOUNT = 8 * 1024 * 1024; // pause sending above this
 const DISCONNECT_GRACE_MS = 6000; // tolerate brief ICE blips before restarting
 const RECONNECT_GIVEUP_MS = 30000; // fully fail if not back within this long
 const CONNECTED_STUCK_MS = 18000; // "connected" per ICE but no protocol progress
+const PEER_LEFT_GRACE_MS = 6000; // tolerate a signaling blip before declaring the peer gone
 
 // STUN alone only resolves NAT type for "easy" NATs (full-cone, restricted-
 // cone) — it cannot traverse symmetric NAT, which is common on cellular/
@@ -69,13 +70,19 @@ function buildIceServers(): RTCIceServer[] {
   // dedicated free-tier account under load — but it means cross-network
   // transfers work out of the box instead of silently failing until
   // someone configures NEXT_PUBLIC_TURN_*. See DEPLOY.md.
+  // Includes explicit ?transport=tcp / turns: (TLS) variants on top of
+  // plain UDP — some networks (many corporate/mobile firewalls) block
+  // outbound UDP entirely, and TLS-on-443 is the option most likely to
+  // pass through those since it's indistinguishable from ordinary HTTPS.
   servers.push(
     { urls: "stun:stun.relay.metered.ca:80" },
     {
       urls: [
         "turn:global.relay.metered.ca:80",
+        "turn:global.relay.metered.ca:80?transport=tcp",
         "turn:global.relay.metered.ca:443",
-        "turns:global.relay.metered.ca:443",
+        "turn:global.relay.metered.ca:443?transport=tcp",
+        "turns:global.relay.metered.ca:443?transport=tcp",
       ],
       username: "openrelayproject",
       credential: "openrelayproject",
@@ -207,6 +214,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectGiveUpTimer: ReturnType<typeof setTimeout> | null = null;
   private connectedStuckTimer: ReturnType<typeof setTimeout> | null = null;
+  private peerLeftGraceTimer: ReturnType<typeof setTimeout> | null = null;
   private iceRestartInFlight = false;
   private intentionallyClosed = false;
 
@@ -233,13 +241,18 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.signaling.on("room-created", () => this.setStatus("waiting-for-peer"));
 
     this.signaling.on("peer-joined", ({ peerId }) => {
-      // Sender side: a receiver joined, initiate the RTCPeerConnection.
+      // Sender side: a receiver joined (or an existing one was
+      // re-announced after this session's own signaling socket
+      // reconnected) — either way, a peer we might have just given up on
+      // is confirmed present, so cancel any pending "peer left" teardown.
+      this.clearPeerLeftGrace();
       this.remotePeerId = peerId;
       void this.initiateAsSender();
     });
 
     this.signaling.on("room-joined", ({ senderId }) => {
       // Receiver side: prepare to receive the offer via the "signal" event.
+      this.clearPeerLeftGrace();
       this.remotePeerId = senderId;
       this.setStatus("establishing-connection");
       this.preparePeerConnection();
@@ -248,15 +261,26 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.signaling.on("signal", ({ data }) => void this.handleSignal(data));
 
     this.signaling.on("peer-left", () => {
-      if (this.intentionallyClosed) return;
-      this.teardownConnection();
-      this.setStatus("closed");
-      this.emit("notice", {
-        message:
-          this.role === "sender"
-            ? "The receiver disconnected."
-            : "The sender disconnected — this room code is no longer active.",
-      });
+      if (this.intentionallyClosed || this.peerLeftGraceTimer) return;
+      // The signaling socket for either side can drop and reconnect on
+      // its own (a free-tier host restarting mid-negotiation is a real,
+      // observed cause) — server/signaling.js re-announces both sides to
+      // each other once that reconnect rejoins the room. Give that a
+      // short window before treating this as a real departure, so a
+      // transient blip doesn't tear down a connection that's about to
+      // heal itself.
+      this.peerLeftGraceTimer = setTimeout(() => {
+        this.peerLeftGraceTimer = null;
+        if (this.intentionallyClosed) return;
+        this.teardownConnection();
+        this.setStatus("closed");
+        this.emit("notice", {
+          message:
+            this.role === "sender"
+              ? "The receiver disconnected."
+              : "The sender disconnected — this room code is no longer active.",
+        });
+      }, PEER_LEFT_GRACE_MS);
     });
 
     this.signaling.on("cancelled", ({ by }) => {
@@ -430,6 +454,14 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     if (this.connectedStuckTimer) {
       clearTimeout(this.connectedStuckTimer);
       this.connectedStuckTimer = null;
+    }
+    this.clearPeerLeftGrace();
+  }
+
+  private clearPeerLeftGrace(): void {
+    if (this.peerLeftGraceTimer) {
+      clearTimeout(this.peerLeftGraceTimer);
+      this.peerLeftGraceTimer = null;
     }
   }
 
