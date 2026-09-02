@@ -13,19 +13,20 @@
   --font-heading: var(--font-gilroy);
   --font-mono: var(--font-geist-mono);
 
-  /* Brand indigo, pulled from ashwanitiwari.com's own theme (#5368fd is
-     its primary accent) — replaces the generic emerald/cyan SaaS-template
-     palette as the primary interactive color. Emerald is kept, but only
-     for security/verified/success signals (checkmarks, encryption
-     badges), which is a meaningful, not decorative, use of color. */
-  --color-brand-50: #f6f4ff;
-  --color-brand-100: #e7eaff;
-  --color-brand-200: #d6dcff;
-  --color-brand-400: #7f8dfe;
-  --color-brand-500: #5368fd;
-  --color-brand-600: #4a4fe0;
-  --color-brand-700: #553fbf;
-  --color-brand-800: #4431a7;
+  /* Corporate blue (Coursera-style: #0056D2) — a deliberate move away
+     from the earlier indigo/purple SaaS-template hue toward the kind of
+     restrained, trustworthy blue enterprise/education platforms use.
+     Emerald is kept, but only for security/verified/success signals
+     (checkmarks, encryption badges), a meaningful, not decorative, use
+     of color. */
+  --color-brand-50: #eef4fc;
+  --color-brand-100: #dbe9fa;
+  --color-brand-200: #b3d0f5;
+  --color-brand-400: #4a90e2;
+  --color-brand-500: #0056d2;
+  --color-brand-600: #0047ad;
+  --color-brand-700: #003683;
+  --color-brand-800: #002968;
 }
 
 body {

@@ -2,16 +2,16 @@ import { FileText, Image as ImageIcon, ShieldCheck, Video } from "lucide-react";
 
 /**
  * Hand-built SVG + icon composition depicting two devices exchanging
- * data directly over an encrypted P2P link — a frosted-glass panel meant
- * to sit on the colored hero banner, standing in for a product
- * screenshot without needing external image assets.
+ * data directly over an encrypted P2P link — a frosted-glass panel over
+ * the light blue hero banner, standing in for a product screenshot
+ * without needing external image assets.
  */
 export function HeroIllustration() {
   return (
     <div className="relative mx-auto aspect-square w-full max-w-lg">
       <div
         aria-hidden
-        className="absolute inset-0 rounded-[2.5rem] border border-white/15 bg-white/[0.06] backdrop-blur-xl"
+        className="absolute inset-0 rounded-[2.5rem] border border-white/80 bg-white/50 shadow-xl backdrop-blur-xl"
       />
 
       <svg
@@ -21,14 +21,14 @@ export function HeroIllustration() {
         aria-label="Two devices exchanging an encrypted file directly, peer to peer"
       >
         {/* left device */}
-        <rect x="36" y="120" width="92" height="160" rx="16" fill="#ffffff" />
-        <rect x="50" y="136" width="64" height="98" rx="4" fill="#5368fd" fillOpacity="0.15" />
-        <circle cx="82" cy="252" r="5" fill="#5368fd" fillOpacity="0.4" />
+        <rect x="36" y="120" width="92" height="160" rx="16" fill="#ffffff" stroke="#e4e4e7" />
+        <rect x="50" y="136" width="64" height="98" rx="4" fill="#0056d2" fillOpacity="0.12" />
+        <circle cx="82" cy="252" r="5" fill="#0056d2" fillOpacity="0.5" />
 
         {/* right device */}
-        <rect x="272" y="120" width="92" height="160" rx="16" fill="#e7eaff" />
-        <rect x="286" y="136" width="64" height="98" rx="4" fill="#5368fd" fillOpacity="0.15" />
-        <circle cx="318" cy="252" r="5" fill="#5368fd" fillOpacity="0.4" />
+        <rect x="272" y="120" width="92" height="160" rx="16" fill="#ffffff" stroke="#e4e4e7" />
+        <rect x="286" y="136" width="64" height="98" rx="4" fill="#0056d2" fillOpacity="0.12" />
+        <circle cx="318" cy="252" r="5" fill="#0056d2" fillOpacity="0.5" />
 
         {/* connection beam */}
         <line
@@ -36,12 +36,12 @@ export function HeroIllustration() {
           y1="200"
           x2="272"
           y2="200"
-          stroke="#ffffff"
+          stroke="#0056d2"
           strokeWidth="3"
           strokeDasharray="6 6"
           strokeLinecap="round"
           className="animate-flow"
-          opacity="0.8"
+          opacity="0.6"
         />
       </svg>
 

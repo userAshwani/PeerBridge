@@ -40,7 +40,7 @@ export function StatusPill({ status }: { status: TransferStatus }) {
       : isWarning
         ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse"
         : isActive
-          ? "bg-brand-500 shadow-[0_0_8px_rgba(83,104,253,0.6)] animate-pulse"
+          ? "bg-brand-500 shadow-[0_0_8px_rgba(0,86,210,0.6)] animate-pulse"
           : "bg-zinc-400";
 
   return (

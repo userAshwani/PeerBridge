@@ -91,7 +91,7 @@ export default function Home() {
                     onChange={(e) => setJoinCode(e.target.value)}
                     placeholder="ABC123"
                     maxLength={6}
-                    className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-center font-mono text-base uppercase tracking-widest text-zinc-900 outline-none focus:border-brand-500"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-center font-mono text-base uppercase tracking-widest text-zinc-900 outline-none focus:border-brand-500"
                   />
                   <button
                     type="submit"
@@ -203,23 +203,23 @@ export default function Home() {
           </Link>
         </div>
 
-        {/* Branding panel — decorative, no functional UI. Solid near-black
-            rather than a colored gradient, with a single soft spotlight
-            (one-stop radial blur, not a full-surface gradient) for depth —
-            the glassmorphic illustration and dot-grid do the rest. */}
-        <div className="relative hidden overflow-hidden bg-zinc-950 lg:flex lg:min-h-[640px] lg:items-center lg:justify-center">
+        {/* Branding panel — decorative, no functional UI. Solid light blue
+            (never dark), with a soft glow behind a frosted glass card so
+            the glassmorphism is actually visible — blur has nothing to
+            show through against a flat white backdrop. */}
+        <div className="relative hidden overflow-hidden bg-brand-50 lg:flex lg:min-h-[640px] lg:items-center lg:justify-center">
           <div
             aria-hidden
-            className="pointer-events-none absolute -top-24 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-brand-500/10 blur-[100px]"
+            className="pointer-events-none absolute -top-24 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-brand-200/60 blur-[100px]"
           />
-          <div aria-hidden className="bg-dot-grid pointer-events-none absolute inset-0 opacity-[0.06]" />
+          <div aria-hidden className="bg-dot-grid pointer-events-none absolute inset-0 opacity-[0.05]" />
           <div className="relative w-full max-w-md px-10">
             <HeroIllustration />
             <div className="mt-10 text-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-brand-400">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-brand-600">
                 Zero-cloud &middot; peer-to-peer
               </p>
-              <p className="mt-3 text-xl font-bold leading-snug text-white">
+              <p className="mt-3 text-xl font-bold leading-snug text-zinc-900">
                 Photos, videos, documents, entire folders —
                 <br />
                 straight from your device to theirs.
