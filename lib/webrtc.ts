@@ -295,7 +295,28 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.signaling.on("error", ({ message }) => this.emit("error", { message }));
 
     this.signaling.connect();
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    }
   }
+
+  /**
+   * Mobile browsers throttle or fully suspend background network activity
+   * (e.g. the sender switches to WhatsApp to share the room code) — the
+   * signaling socket can silently drop while backgrounded. Reconnecting is
+   * already automatic, but forcing it the instant the tab is foregrounded
+   * again (rather than waiting on a possibly-still-pending backoff timer)
+   * closes that gap as much as is possible from a web page: nothing here
+   * can prevent the OS from discarding the tab entirely under memory
+   * pressure, which does lose all in-page state including the picked
+   * files — that's outside what any web API can control.
+   */
+  private handleVisibilityChange = (): void => {
+    if (document.visibilityState === "visible") {
+      this.signaling.reconnectNow();
+    }
+  };
 
   /**
    * Receiver only: accept an incoming batch after reviewing its file list.
@@ -348,6 +369,9 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   destroy(): void {
     this.intentionallyClosed = true;
     this.clearTimers();
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    }
     this.signaling.leaveRoom();
     this.signaling.close();
     this.channel?.close();

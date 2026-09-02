@@ -90,6 +90,28 @@ export class SignalingClient extends Emitter<SignalingEvents> {
     }, delay);
   }
 
+  isOpen(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /**
+   * Forces an immediate reconnect attempt, bypassing any pending backoff
+   * delay. Meant to be called when the page regains foreground/visibility
+   * on mobile: the OS throttles background timers and network activity, so
+   * the socket can silently drop while backgrounded (e.g. the user switches
+   * to WhatsApp to share the room code) and the normal backoff timer may
+   * not fire again until the tab is already active — this short-circuits
+   * that wait instead of leaving the session looking stalled.
+   */
+  reconnectNow(): void {
+    if (this.intentionalClose || this.isOpen()) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.openSocket();
+  }
+
   private send(payload: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(payload));
