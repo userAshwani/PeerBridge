@@ -53,7 +53,6 @@ open the app in two tabs to test a real transfer locally.
 | `lib/webrtc.ts` | The `PeerTransferSession` engine: chunking, backpressure, reconnect, SHA-256 |
 | `lib/signaling-client.ts` | Browser-side WebSocket client for the signaling protocol |
 | `hooks/usePeerTransfer.ts` | React hook wrapping a transfer session (sender or receiver) |
-| `hooks/useRelayStatus.ts` | Tracks signaling-relay connectivity/latency, surfaces cold starts |
 | `app/page.tsx` | Sender UI: dropzone, room code, QR pairing, cancel |
 | `app/join/[roomId]/page.tsx` | Receiver UI: accept/decline, progress, verified download, cancel |
 

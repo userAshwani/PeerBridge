@@ -8,11 +8,9 @@ import { DropZone } from "@/components/DropZone";
 import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
-import { RelayStatusBadge } from "@/components/RelayStatusBadge";
 import { HeroIllustration } from "@/components/HeroIllustration";
 import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
-import { useRelayStatus } from "@/hooks/useRelayStatus";
 import { generateRoomCode } from "@/lib/room-code";
 import { formatBytes, formatDuration, formatSpeed } from "@/lib/format";
 import { DroppedFile } from "@/lib/collect-files";
@@ -24,8 +22,6 @@ export default function Home() {
   const [files, setFilesState] = useState<DroppedFile[]>([]);
   const [joinCode, setJoinCode] = useState("");
   const roomId = useMemo(() => (files.length > 0 ? generateRoomCode() : null), [files]);
-  const relay = useRelayStatus();
-  const relayReady = relay.status === "connected";
 
   const {
     status,
@@ -62,8 +58,7 @@ export default function Home() {
         {/* THE MODULE — this is the entire product, nothing else on this page */}
         <div className="flex flex-col justify-center gap-6 px-6 py-12 sm:px-10 lg:py-16">
           <div>
-            <RelayStatusBadge status={relay.status} latencyMs={relay.latencyMs} />
-            <h1 className="mt-4 text-2xl font-bold text-zinc-900 sm:text-3xl">
+            <h1 className="text-2xl font-bold text-zinc-900 sm:text-3xl">
               Send files, instantly
             </h1>
             <p className="mt-1.5 text-sm text-zinc-500">
@@ -74,15 +69,7 @@ export default function Home() {
           <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl shadow-zinc-900/5">
             {files.length === 0 && (
               <>
-                <DropZone
-                  onFiles={handleFiles}
-                  disabled={!relayReady}
-                  disabledMessage={
-                    relay.status === "waking"
-                      ? "Waking secure P2P signaling relay…"
-                      : "Reconnecting to relay…"
-                  }
-                />
+                <DropZone onFiles={handleFiles} />
                 <div className="mt-8 flex items-center gap-3 text-sm text-zinc-400">
                   <div className="h-px flex-1 bg-zinc-200" />
                   have a code?
