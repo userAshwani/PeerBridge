@@ -10,6 +10,7 @@ import { FAQ } from "@/components/FAQ";
 import { Contact } from "@/components/Contact";
 import { CallToAction } from "@/components/CallToAction";
 import { BuiltBy } from "@/components/BuiltBy";
+import { SiteFooter } from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
   title: "Explore",
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
 
 export default function ExplorePage() {
   return (
+    <>
     <main className="flex flex-1 flex-col bg-white text-zinc-900">
       <div className="mx-auto w-full max-w-3xl px-6 pb-4 pt-16 text-center sm:px-10">
         <p className="text-xs font-semibold uppercase tracking-widest text-brand-500">Explore</p>
@@ -62,5 +64,7 @@ export default function ExplorePage() {
 
       <CallToAction />
     </main>
+    <SiteFooter />
+    </>
   );
 }

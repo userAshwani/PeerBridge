@@ -4,7 +4,6 @@ import "./globals.css";
 import { gilroy } from "@/lib/fonts";
 import { TopBar } from "@/components/TopBar";
 import { SiteHeader } from "@/components/SiteHeader";
-import { SiteFooter } from "@/components/SiteFooter";
 import {
   AUTHOR_NAME,
   PARENT_SITE_URL,
@@ -111,7 +110,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <TopBar />
         <SiteHeader />
         {children}
-        <SiteFooter />
       </body>
     </html>
   );

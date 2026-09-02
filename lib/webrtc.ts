@@ -621,7 +621,16 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         this.setStatus("closed");
       }
     };
-    channel.onerror = () => this.emit("error", { message: "Data channel error" });
+    channel.onerror = () => {
+      // Closing a channel/connection intentionally (our own cancel(), or
+      // the other side's "cancelled"/teardown reaching us first) can still
+      // fire this event in some browsers as a side effect of the abrupt
+      // close — not a real transfer failure, so don't surface it as one.
+      if (this.intentionallyClosed || ["cancelled", "completed", "rejected", "closed"].includes(this.status)) {
+        return;
+      }
+      this.emit("error", { message: "Data channel error" });
+    };
     channel.onmessage = (event) => this.handleChannelMessage(event);
   }
 
