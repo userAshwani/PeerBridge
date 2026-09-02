@@ -1,109 +1,71 @@
-# Fixing cross-country transfers: self-hosted TURN on your Hostinger VPS
+# TURN server on your Hostinger VPS (simple version)
 
-## What actually happened
+## Why you need this
 
-Your India↔India-nearby-network test worked. Your India↔USA test got
-stuck. Both sides ran the exact same code — the difference is the
-network path between them, and here's why:
+Your app already works fine when both people are on friendly networks.
+It gets stuck when one person is far away (like India↔USA) because
+their connection has to cross carrier-grade NAT, which only a **TURN
+relay server** can get through. Right now it's falling back to a free
+public relay that isn't reliable. This guide sets up your own, on the
+same VPS that's already running `transfer.ashwanitiwari.com` — no
+extra cost, no third-party billing.
 
-- WebRTC always tries a **direct** connection first (STUN helps two
-  peers discover their public IP/port so they can punch through NAT).
-  This works fine when both sides are on networks with "easy" NAT
-  (most home/office Wi-Fi) — which is why your nearby-network friend
-  connected instantly.
-- It does **not** work when either side sits behind **symmetric NAT or
-  carrier-grade NAT (CGNAT)** — extremely common on mobile carriers and
-  typical for long-distance international routing, since traffic
-  between India and the USA usually crosses several ISPs/carriers, each
-  potentially adding another layer of NAT. Direct connection becomes
-  impossible, full stop — no amount of retrying fixes it.
-- The only fix for that case is a **TURN server**: a relay both sides
-  can always reach, which forwards the encrypted data between them.
-- Your app already falls back to a TURN server when no custom one is
-  configured — but that fallback is Metered's **public, shared,
-  free-for-anyone** "Open Relay" pool (`openrelayproject`). It has no
-  uptime guarantee and is commonly overloaded or unreachable. Your test
-  proved exactly that: the browser found other candidates, but never a
-  working `relay` one.
-
-**The fix:** run your own TURN server. It's not a code problem —
-[lib/webrtc.ts](lib/webrtc.ts) already fully supports a custom TURN
-server via three env vars. You just need a real, reliable one behind
-those env vars instead of the public fallback.
-
-## Why your Hostinger VPS and not Cloudflare/Metered
-
-- **Cloudflare Realtime TURN** is only free when paired with their SFU
-  (a video-conferencing product this app doesn't use). Used standalone
-  — which is what a file-transfer app needs — it bills **$0.05 per GB
-  relayed**, with no free quota. That's real, ongoing cost tied
-  directly to your users' transfer volume.
-- **Metered's free tier** caps at 50GB/month, then bills.
-- **Self-hosting `coturn`** (the standard open-source TURN server) on
-  your existing paid Hostinger VPS costs **$0 extra** — you're already
-  paying for that VPS, and TURN relay traffic just counts against the
-  VPS's own bandwidth allowance like any other traffic. No per-GB TURN
-  billing, no usage cap from a third party.
+This is separate from CloudPanel/website stuff — `coturn` isn't a
+website, it's a background service, so none of this touches your
+Node.js site.
 
 ---
 
-## Step 1 — Point a subdomain at your VPS
+## Step 1 — Point a subdomain at your VPS (probably already done)
 
-TURN over TLS (`turns:`, port 5349) needs a real certificate, which
-needs a domain. In your DNS (wherever `ashwanitiwari.com` is managed):
-
-- Add an **A record**: `turn.ashwanitiwari.com` → your Hostinger VPS's
-  public IP address.
-- Wait for it to resolve (`ping turn.ashwanitiwari.com` from your own
-  machine — a couple of minutes usually, longer if TTL is high).
-
-## Step 2 — SSH into the VPS and install coturn
+You already have a wildcard DNS record (`* → your VPS IP`) in
+Hostinger, which means `turn.ashwanitiwari.com` **already resolves to
+your VPS** with nothing extra to do. Confirm:
 
 ```bash
-ssh root@YOUR_VPS_IP
+ping turn.ashwanitiwari.com
+```
+
+If that doesn't return your VPS IP, add an **A record**: Name
+`turn`, Type `A`, Content = your VPS IP, in Hostinger's DNS page.
+
+## Step 2 — SSH in as root and install coturn
+
+```bash
+ssh root@<your-vps-ip>
 apt update && apt install -y coturn certbot
 ```
 
-(Hostinger VPS plans are commonly Ubuntu/Debian — if yours uses a
-different distro, the package name is the same, just swap `apt` for
-your package manager.)
-
-## Step 3 — Get a TLS certificate for the subdomain
+## Step 3 — Get a certificate for the subdomain
 
 ```bash
-# Stop nothing else needs to be running on port 80 for this to work
 certbot certonly --standalone -d turn.ashwanitiwari.com
 ```
 
-This writes the certificate to
-`/etc/letsencrypt/live/turn.ashwanitiwari.com/fullchain.pem` and
-`privkey.pem`.
+If this fails saying port 80 is busy, stop first with
+`systemctl stop nginx` (CloudPanel's Nginx), run certbot, then
+`systemctl start nginx` again.
 
 ## Step 4 — Configure coturn
 
-Open `/etc/turnserver.conf` and replace its contents with:
+Replace everything in `/etc/turnserver.conf` with this (edit the two
+lines marked `# CHANGE THIS`):
 
 ```
 listening-port=3478
 tls-listening-port=5349
-
-# Relay port range — the actual media/data flows through these. Keep
-# it reasonably sized; this app only ever has one active relay session
-# per transfer, so this range is generous, not a bottleneck.
 min-port=49160
 max-port=49200
 
-# Your VPS's public IP — REPLACE with the real address.
-external-ip=YOUR_VPS_IP
+external-ip=YOUR_VPS_IP_HERE
+# CHANGE THIS ^ to your VPS's actual public IP
 
 realm=turn.ashwanitiwari.com
 server-name=turn.ashwanitiwari.com
 
-# Static credential — one fixed username/password this app authenticates
-# with. Matches the NEXT_PUBLIC_TURN_USERNAME/_CREDENTIAL model already
-# in lib/webrtc.ts, so no app code changes are needed.
 lt-cred-mech
-user=peerbridge:CHOOSE-A-STRONG-PASSWORD-HERE
+user=peerbridge:YOUR-STRONG-PASSWORD-HERE
+# CHANGE THIS ^ password — this is what your app authenticates with
 
 cert=/etc/letsencrypt/live/turn.ashwanitiwari.com/fullchain.pem
 pkey=/etc/letsencrypt/live/turn.ashwanitiwari.com/privkey.pem
@@ -114,103 +76,95 @@ no-cli
 log-file=/var/log/turnserver.log
 ```
 
-Replace:
-- `YOUR_VPS_IP` with the VPS's actual public IPv4 address.
-- `CHOOSE-A-STRONG-PASSWORD-HERE` with a long random password (this is
-  the credential every visitor's browser will use — treat it like a
-  shared secret, not a personal password; a leaked one just lets
-  someone else relay traffic through your VPS, it doesn't expose your
-  files).
-
-Then enable the service:
+Start it:
 
 ```bash
 sed -i 's/#TURNSERVER_ENABLED=1/TURNSERVER_ENABLED=1/' /etc/default/coturn
 systemctl enable coturn
 systemctl restart coturn
-systemctl status coturn   # should show "active (running)"
+systemctl status coturn
 ```
 
-## Step 5 — Open the firewall
+You should see `active (running)` in green.
 
+## Step 5 — Open the ports (the step most people miss)
+
+There are potentially **two separate firewalls** on a Hostinger VPS —
+you need both open, not just one:
+
+**a) Inside the VPS (`ufw`):**
 ```bash
-ufw allow 3478/tcp
-ufw allow 3478/udp
-ufw allow 5349/tcp
-ufw allow 5349/udp
+ufw allow 3478
+ufw allow 5349
 ufw allow 49160:49200/udp
 ufw allow 49160:49200/tcp
 ```
 
-If Hostinger's control panel has its own separate cloud firewall
-(distinct from `ufw` inside the VPS), open the same ports there too —
-otherwise Hostinger's edge firewall blocks the traffic before it even
-reaches `ufw`.
+**b) Hostinger's own VPS firewall (a separate, edge-level firewall —
+this is very likely why your GitHub Actions SSH connection is also
+timing out right now):** In hPanel → **VPS → your server → Firewall**,
+check whether a firewall profile is attached and what rules exist. If
+it's restricted to specific IPs, add rules allowing (source: anywhere
+/ 0.0.0.0/0):
+- TCP `3478`, UDP `3478`
+- TCP `5349`, UDP `5349`
+- TCP+UDP `49160-49200`
+- TCP `22` (SSH) — if this is currently locked to your own IP only, that's exactly what's blocking GitHub Actions from deploying too.
 
-## Step 6 — Keep the certificate renewed without downtime
+Skipping this step is the #1 reason a TURN server "looks" configured
+correctly but still doesn't work — the certificate and coturn config
+can be perfect and it'll still fail silently if the edge firewall
+drops the traffic.
 
-Certbot's renewal needs port 80 free, which conflicts with coturn
-running. Add a renewal hook so coturn briefly stops/restarts around
-renewal instead of you doing it by hand:
+## Step 6 — Test it works, before touching the app
 
-```bash
-mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-cat > /etc/letsencrypt/renewal-hooks/deploy/coturn-restart.sh <<'EOF'
-#!/bin/sh
-systemctl restart coturn
-EOF
-chmod +x /etc/letsencrypt/renewal-hooks/deploy/coturn-restart.sh
-```
-
-Certbot auto-renews via its own systemd timer already installed by the
-package — nothing else to schedule.
-
-## Step 7 — Test the TURN server in isolation (before touching the app)
-
-Open Google's public [Trickle ICE
-tester](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
-in a browser, remove the default STUN/TURN entries, and add:
+Open [Trickle
+ICE](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/),
+clear the default servers, and add:
 
 | URI | username | credential |
 |---|---|---|
 | `turn:turn.ashwanitiwari.com:3478` | `peerbridge` | *(your password)* |
 | `turns:turn.ashwanitiwari.com:5349?transport=tcp` | `peerbridge` | *(your password)* |
 
-Click **Gather candidates**. You must see at least one line with
-**`typ relay`** in the output. If you don't, stop here and re-check
-Steps 4–5 (firewall is the most common culprit) before moving on.
+Click **Gather candidates**. You need to see a line with **`typ
+relay`**. If you don't, it's Step 5 — go back and double-check both
+firewalls.
 
-## Step 8 — Point the app at it
+## Step 7 — Point the app at it
 
-In Vercel → your project → **Settings → Environment Variables**, add
-(Production, and Preview if you want previews to use it too):
+Since you're deploying from your VPS repo directly (not Vercel
+anymore), add these to a file the app reads at build time:
+
+```bash
+cd ~/htdocs/transfer.ashwanitiwari.com
+nano .env.production.local
+```
+
+Paste in (this file is git-ignored, safe to keep secrets in):
 
 ```
 NEXT_PUBLIC_TURN_URLS=turn:turn.ashwanitiwari.com:3478,turns:turn.ashwanitiwari.com:5349?transport=tcp
 NEXT_PUBLIC_TURN_USERNAME=peerbridge
-NEXT_PUBLIC_TURN_CREDENTIAL=CHOOSE-A-STRONG-PASSWORD-HERE
+NEXT_PUBLIC_TURN_CREDENTIAL=YOUR-STRONG-PASSWORD-HERE
 ```
 
-(the same password you set in Step 4).
+Save, then rebuild and restart (env vars are baked in at build time,
+not read live):
 
-**Redeploy** — `NEXT_PUBLIC_*` values are baked into the JavaScript
-bundle at build time, not read at runtime, so a plain restart doesn't
-pick them up.
+```bash
+npm run build
+pm2 restart peerbridge
+```
 
-## Step 9 — Retest with your USA friend
+## Step 8 — Retest with your USA friend
 
-Once redeployed, repeat the exact transfer that failed before. Open
-the browser console on either side — you should now see
-`[PeerBridge] ICE connection state: connected` and the transfer should
-proceed. If it still fails, the new error message will now say
-specifically what went wrong (no candidates at all / no relay found /
-relay found but still failed) — send me that exact text.
+Same transfer that failed before. It should connect now. If it still
+fails, the app's error message will say exactly what happened — send
+me that text.
 
 ---
 
-## Cost recap
+## Cost
 
-$0 beyond your existing Hostinger VPS payment. TURN relay traffic
-counts against that VPS's normal bandwidth allowance, same as any
-other traffic it serves — no third-party per-GB billing, no monthly
-cap from an external provider.
+$0 beyond the VPS you already pay for.
