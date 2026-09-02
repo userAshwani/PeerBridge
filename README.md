@@ -13,10 +13,8 @@ Live at **[transfer.ashwanitiwari.com](https://transfer.ashwanitiwari.com)**, a 
 - **Next.js 16** (App Router, TypeScript, Tailwind CSS 4)
 - **[server.js](server.js)** — a custom Node server that runs the Next.js
   app, a `ws`-based WebSocket signaling server (`/ws`), and a health
-  check (`/health`, `/ping`, `/api/health`) all on one HTTP server/port.
-  For a split deployment (e.g. Vercel + Render, see below),
-  [server/standalone.js](server/standalone.js) runs just the signaling
-  half on its own, with no Next.js dependency.
+  check (`/health`, `/ping`, `/api/health`) all on one HTTP server/port
+  — this is what runs in production (see [DEPLOY.md](DEPLOY.md)).
 - **WebRTC `RTCDataChannel`** — 64KB chunked transfer with
   `bufferedAmount` backpressure, SHA-256 (Web Crypto API) integrity
   verification per file, and an automatic ICE-restart attempt on a
@@ -52,8 +50,6 @@ open the app in two tabs to test a real transfer locally.
 | Path | What it is |
 | --- | --- |
 | `server.js` / `server/signaling.js` | Custom Node server + WebSocket room/SDP/ICE relay |
-| `server/standalone.js` | Signaling-only server for a split frontend/backend deployment |
-| `render.yaml` | Render Blueprint pinning the signaling service's config as code (build/start command, health check, auto-deploy) |
 | `lib/webrtc.ts` | The `PeerTransferSession` engine: chunking, backpressure, reconnect, SHA-256 |
 | `lib/signaling-client.ts` | Browser-side WebSocket client for the signaling protocol |
 | `hooks/usePeerTransfer.ts` | React hook wrapping a transfer session (sender or receiver) |
@@ -73,31 +69,18 @@ npm run lint      # eslint
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md) for three paths. All of them auto-deploy on
-every `git push` to `main` once set up once:
-
-- **Render (free tier)** — everything in one Node web service, custom
-  domain + free SSL, step-by-step from repo connection to DNS.
-- **Vercel (frontend) + Render (backend)** — Next.js on Vercel,
-  `server/standalone.js` as a signaling-only service on Render (deployed
-  from [render.yaml](render.yaml) as a Blueprint, so its config is
-  version-controlled instead of hand-typed into a dashboard form),
-  connected via `NEXT_PUBLIC_SIGNALING_URL`.
-- **VPS with Docker + Nginx** — [Dockerfile](Dockerfile),
-  [docker-compose.yml](docker-compose.yml), and an
-  [Nginx virtual host config](deploy/nginx/transfer.ashwanitiwari.com.conf)
-  with Certbot instructions (this one has no platform auto-deploy —
-  see DEPLOY.md).
+Live on a single Hostinger VPS (CloudPanel + PM2), with a self-hosted
+TURN relay (`coturn`) on the same box for cross-country transfers, and
+auto-deploy on every `git push` to `main` via GitHub Actions. Full
+step-by-step in [DEPLOY.md](DEPLOY.md).
 
 ## Known limitations
 
-- TURN falls back to a shared public relay (Metered's Open Relay
-  Project) when no dedicated TURN credentials are configured, so
-  cross-network/international transfers work without any setup — but
-  that fallback is rate-limited with no uptime guarantee. For real
-  reliability at scale, get your own free-tier TURN credentials and
-  set `NEXT_PUBLIC_TURN_URLS` / `_USERNAME` / `_CREDENTIAL` (Metered.ca,
-  Cloudflare Calls) — see [DEPLOY.md](DEPLOY.md#notes-all-options).
+- Without a configured TURN server, [lib/webrtc.ts](lib/webrtc.ts)
+  falls back to a shared public relay (Metered's Open Relay Project) —
+  fine for a quick local checkout, not reliable enough for production;
+  the live deployment runs its own instead (see
+  [DEPLOY.md](DEPLOY.md#8-turn-server-required-for-cross-country-transfers)).
 - A transfer can't resume after either tab is closed or reloaded — since
   no file data is ever stored server-side, there's nothing to resume
   from once the browser holding it in memory is gone. It does survive
