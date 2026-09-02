@@ -10,6 +10,7 @@ import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
 import { PartsProgress } from "@/components/PartsProgress";
 import { ParallelSegments } from "@/components/ParallelSegments";
+import { MiniFooter } from "@/components/MiniFooter";
 import { HeroIllustration } from "@/components/HeroIllustration";
 import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
@@ -79,7 +80,7 @@ export default function Home() {
                   <div className="h-px flex-1 bg-zinc-200" />
                 </div>
                 <form
-                  className="mt-4 flex gap-2"
+                  className="mt-4 flex flex-col gap-2 sm:flex-row"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (joinCode.trim()) router.push(`/join/${joinCode.trim().toUpperCase()}`);
@@ -94,7 +95,7 @@ export default function Home() {
                   />
                   <button
                     type="submit"
-                    className="flex items-center gap-1 rounded-full bg-gradient-to-r from-brand-500 to-brand-700 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-brand-500/30 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                    className="flex items-center justify-center gap-1 rounded-full bg-gradient-to-r from-brand-500 to-brand-700 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-md shadow-brand-500/30 transition-transform hover:scale-[1.02] active:scale-[0.98]"
                   >
                     Join <ArrowRight className="h-4 w-4" />
                   </button>
@@ -219,6 +220,7 @@ export default function Home() {
           </div>
         </div>
       </div>
+      <MiniFooter />
     </main>
   );
 }

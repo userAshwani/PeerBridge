@@ -3,6 +3,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import { Copy, Check, Share2 } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
+import { LOGO_URL } from "@/lib/constants";
 
 // navigator.share() only exists in the browser, and its availability never
 // changes after load — useSyncExternalStore is the correct tool for exactly
@@ -39,7 +40,23 @@ export function QRPanel({ roomId, shareUrl }: { roomId: string; shareUrl: string
   return (
     <div className="flex flex-col items-center gap-4 rounded-2xl border border-zinc-200 bg-gradient-to-b from-zinc-50 to-white p-6 shadow-sm">
       <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-inner">
-        <QRCodeSVG value={shareUrl} size={160} bgColor="#ffffff" fgColor="#18181b" />
+        <QRCodeSVG
+          value={shareUrl}
+          size={160}
+          bgColor="#ffffff"
+          fgColor="#18181b"
+          // "H" (30% error correction) is required to embed a logo this
+          // size without the QR code becoming unscannable — excavate
+          // clears the modules directly under it rather than overlaying,
+          // which scans more reliably than a plain overlay.
+          level="H"
+          imageSettings={{
+            src: LOGO_URL,
+            height: 32,
+            width: 32,
+            excavate: true,
+          }}
+        />
       </div>
       <div className="text-center">
         <p className="text-xs uppercase tracking-widest text-zinc-500">Room code</p>
