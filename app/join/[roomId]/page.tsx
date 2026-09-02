@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, Files, ShieldAlert, Download, HardDrive } from "
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
 import { PartsProgress } from "@/components/PartsProgress";
+import { ParallelSegments } from "@/components/ParallelSegments";
 import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
 import { formatBytes, formatDuration, formatSpeed } from "@/lib/format";
@@ -148,11 +149,15 @@ export default function JoinPage({ params }: { params: Promise<{ roomId: string 
             )}
 
             <div className="mt-4">
-              <PartsProgress
-                label="Downloading"
-                bytesTransferred={progress.currentFileBytesTransferred}
-                totalBytes={progress.currentFileTotalBytes}
-              />
+              {progress.segments && progress.segments.length > 1 ? (
+                <ParallelSegments label="Downloading" segments={progress.segments} />
+              ) : (
+                <PartsProgress
+                  label="Downloading"
+                  bytesTransferred={progress.currentFileBytesTransferred}
+                  totalBytes={progress.currentFileTotalBytes}
+                />
+              )}
             </div>
           </div>
         )}

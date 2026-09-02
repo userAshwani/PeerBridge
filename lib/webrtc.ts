@@ -8,11 +8,39 @@
 //                               mime, relativePath) up front
 //   2. receiver -> "accept" | "reject" (text/JSON)
 //   3. for each file in order:
-//        sender -> "file-start" {index}
-//        sender -> binary chunks (ArrayBuffer, <= CHUNK_SIZE bytes each)
+//        sender -> "file-start" {index, segments?} — segments present only
+//                   for files large enough to split across parallel
+//                   connections (see below)
+//        sender -> binary chunks — each one is a small self-describing
+//                   frame: [1 byte connId][8 bytes absolute file position
+//                   (Float64)][raw chunk bytes], sent on whichever channel
+//                   (primary or a parallel worker) owns that byte range.
+//                   Framing the position into every chunk means the
+//                   receiver can write it straight to the right place
+//                   regardless of delivery order across channels, and a
+//                   worker channel can safely hand its remaining bytes to
+//                   the primary channel if it drops — nothing depends on
+//                   which physical channel a chunk arrives on.
 //        sender -> "file-end" {index, sha256} — hash computed in parallel
 //                   with that file's chunk loop
 //   4. sender -> "batch-end" once every file is done
+//
+// Parallel connections (the "download in parts" feature): for files at or
+// above PARALLEL_MIN_FILE_SIZE, the sender additionally negotiates up to
+// PARALLEL_CONNECTIONS - 1 extra RTCPeerConnections with the same peer
+// (each is a fully independent transport with its own congestion window —
+// unlike multiple RTCDataChannels on ONE RTCPeerConnection, which share one
+// SCTP association and one congestion window, and so would give zero
+// throughput benefit) and splits that file into that many contiguous byte
+// ranges, one per connection, sent concurrently. This mirrors download
+// accelerators like IDM, which get their speed by opening multiple
+// connections to a server rather than one — the benefit here is the same
+// mechanism, but isn't guaranteed the same payoff: two peers are usually
+// bottlenecked by one side's raw link speed, which parallel connections
+// between the same two endpoints can't exceed. It's most likely to help on
+// exactly the kind of long-distance/high-latency link (e.g. relayed
+// through TURN across countries) where a single connection's congestion
+// window struggles to fill the available bandwidth.
 //
 // Room-level control (cancel, disconnect) travels over the signaling
 // WebSocket instead, so it still works even before the data channel opens.
@@ -23,7 +51,7 @@
 
 import { Emitter } from "./emitter";
 import { RTCSignalData, SignalingClient } from "./signaling-client";
-import { sha256Chunks, sha256File, sha256Hex } from "./sha256";
+import { sha256File, sha256Hex } from "./sha256";
 import { DroppedFile } from "./collect-files";
 
 export const CHUNK_SIZE = 64 * 1024; // 64KB
@@ -33,6 +61,17 @@ const DISCONNECT_GRACE_MS = 6000; // tolerate brief ICE blips before restarting
 const RECONNECT_GIVEUP_MS = 30000; // fully fail if not back within this long
 const CONNECTED_STUCK_MS = 18000; // "connected" per ICE but no protocol progress
 const PEER_LEFT_GRACE_MS = 6000; // tolerate a signaling blip before declaring the peer gone
+
+// Parallel-connection ("download in parts") tuning. Each additional
+// connection is a full extra ICE negotiation and, when a direct path isn't
+// available, an extra TURN relay allocation — see DEPLOY.md's TURN section
+// for the coturn port-range headroom this assumes. 4 total (primary + 3
+// workers) balances a real shot at benefiting long-distance transfers
+// against not hammering the relay when many users are transferring at
+// once.
+const PARALLEL_CONNECTIONS = 4;
+const PARALLEL_MIN_FILE_SIZE = 4 * 1024 * 1024; // below this, one connection is already plenty
+const WORKER_CONNECT_TIMEOUT_MS = 5000; // don't let a slow/blocked worker delay the transfer
 
 // STUN alone only resolves NAT type for "easy" NATs (full-cone, restricted-
 // cone) — it cannot traverse symmetric NAT, which is common on cellular/
@@ -125,6 +164,20 @@ export interface IncomingBatch {
   totalBytes: number;
 }
 
+/** One parallel connection's byte range within the file currently in
+ * flight — connId 0 is always the primary connection. */
+export interface FileSegment {
+  connId: number;
+  start: number;
+  end: number;
+}
+
+export interface SegmentProgress {
+  connId: number;
+  bytesTransferred: number;
+  totalBytes: number;
+}
+
 export interface TransferProgress {
   bytesTransferred: number;
   totalBytes: number;
@@ -139,6 +192,9 @@ export interface TransferProgress {
    * above, which is a running total across the whole batch. */
   currentFileBytesTransferred: number;
   currentFileTotalBytes: number;
+  /** Present only when the current file is large enough to be split
+   * across parallel connections — one entry per connection, in real time. */
+  segments?: SegmentProgress[];
 }
 
 /** Sender-side only: the receiver's own confirmed progress on the file it's
@@ -150,6 +206,7 @@ export interface ReceiverFileProgress {
   currentFileIndex: number;
   currentFileBytesTransferred: number;
   currentFileTotalBytes: number;
+  segments?: SegmentProgress[];
 }
 
 export interface CompletedFileResult {
@@ -181,10 +238,40 @@ type DataChannelMessage =
   | { type: "batch-meta"; files: FileMeta[] }
   | { type: "accept" }
   | { type: "reject" }
-  | { type: "file-start"; index: number }
+  | { type: "file-start"; index: number; segments?: FileSegment[] }
   | { type: "file-end"; index: number; sha256: string }
   | { type: "batch-end" }
-  | { type: "receiver-progress"; index: number; bytesTransferred: number; totalBytes: number };
+  | {
+      type: "receiver-progress";
+      index: number;
+      bytesTransferred: number;
+      totalBytes: number;
+      segments?: SegmentProgress[];
+    };
+
+/** Every binary chunk is prefixed with 9 bytes: which connection sent it
+ * (cosmetic — used only to attribute progress to the right segment in the
+ * UI) and the chunk's absolute position in the file currently being
+ * received (load-bearing — this is what makes writing it out correct
+ * regardless of which physical channel it arrived on or what order chunks
+ * from different channels interleave in). */
+function encodeChunk(connId: number, position: number, payload: ArrayBuffer): ArrayBuffer {
+  const out = new ArrayBuffer(9 + payload.byteLength);
+  const view = new DataView(out);
+  view.setUint8(0, connId);
+  view.setFloat64(1, position);
+  new Uint8Array(out, 9).set(new Uint8Array(payload));
+  return out;
+}
+
+function decodeChunk(buffer: ArrayBuffer): { connId: number; position: number; payload: ArrayBuffer } {
+  const view = new DataView(buffer);
+  return {
+    connId: view.getUint8(0),
+    position: view.getFloat64(1),
+    payload: buffer.slice(9),
+  };
+}
 
 /** Per-file receive state. Created fresh on every "file-start" and passed
  * by reference to whatever needs it, rather than read back off shared
@@ -193,10 +280,35 @@ type DataChannelMessage =
  * time) can happen before the previous file's "file-end" has finished
  * closing/hashing it. Passing the slot itself sidesteps that race. */
 interface ReceiveSlot {
+  index: number;
   writeQueue: Promise<void>;
   writable: FileSystemWritableFileStream | null;
   fileHandle: FileSystemFileHandle | null;
-  chunks: ArrayBuffer[];
+  /** In-memory fallback when there's no writable disk target — pre-sized
+   * to the file's full byte length and written at absolute positions, same
+   * as the disk path, so one write path works whether split across
+   * parallel connections or not. */
+  buffer: Uint8Array | null;
+  /** Set only when the sender split this file across parallel connections
+   * — purely descriptive for the UI (segment byte ranges), not needed for
+   * correctness since every chunk already carries its own position. */
+  segments: FileSegment[] | null;
+  /** Bytes received so far per connId — UI only. */
+  segmentReceived: Map<number, number>;
+  /** Set once "file-end" arrives; null until then. */
+  fileEndSha256: string | null;
+  /** Guards against finishing this file twice — the finish condition (all
+   * bytes in + sha256 known) can become true from either "file-end"
+   * arriving or the last chunk arriving, whichever happens second. */
+  finished: boolean;
+}
+
+/** One additional parallel connection beyond the primary, used only for
+ * splitting large files into concurrently-sent byte ranges. */
+interface WorkerConn {
+  connId: number;
+  pc: RTCPeerConnection;
+  channel: RTCDataChannel | null;
 }
 
 export class PeerTransferSession extends Emitter<TransferEvents> {
@@ -204,6 +316,10 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private pc: RTCPeerConnection | null = null;
   private channel: RTCDataChannel | null = null;
   private remotePeerId: string | null = null;
+
+  // ---- parallel connections (connId 0 is always the primary above) ------
+  private workerConns: Map<number, WorkerConn> = new Map();
+  private workerNegotiationStarted = false;
 
   // ---- sender-side batch state -------------------------------------------
   private files: DroppedFile[] = [];
@@ -399,7 +515,17 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.pc?.close();
     this.channel = null;
     this.pc = null;
+    this.closeWorkerConnections();
     this.removeAllListeners();
+  }
+
+  private closeWorkerConnections(): void {
+    for (const worker of this.workerConns.values()) {
+      worker.channel?.close();
+      worker.pc.close();
+    }
+    this.workerConns.clear();
+    this.workerNegotiationStarted = false;
   }
 
   // ---- connection setup -------------------------------------------------
@@ -425,7 +551,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       if (this.remotePeerId) {
         this.signaling.sendSignal(
           this.roomId,
-          { candidate: event.candidate.toJSON() },
+          { candidate: event.candidate.toJSON(), connId: 0 },
           this.remotePeerId,
         );
       }
@@ -533,7 +659,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     try {
       const offer = await pc.createOffer({ iceRestart: true });
       await pc.setLocalDescription(offer);
-      this.signaling.sendSignal(this.roomId, { sdp: offer }, this.remotePeerId);
+      this.signaling.sendSignal(this.roomId, { sdp: offer, connId: 0 }, this.remotePeerId);
     } catch {
       // Best-effort — if the signaling socket is also down this silently
       // no-ops and the give-up timer eventually surfaces a hard error.
@@ -571,6 +697,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.pc?.close();
     this.channel = null;
     this.pc = null;
+    this.closeWorkerConnections();
   }
 
   private async initiateAsSender(): Promise<void> {
@@ -582,12 +709,24 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     if (this.remotePeerId) {
-      this.signaling.sendSignal(this.roomId, { sdp: offer }, this.remotePeerId);
+      this.signaling.sendSignal(this.roomId, { sdp: offer, connId: 0 }, this.remotePeerId);
     }
   }
 
   private async handleSignal(data: RTCSignalData): Promise<void> {
-    const pc = this.pc;
+    const connId = data.connId;
+    let pc: RTCPeerConnection | null;
+    if (connId === 0) {
+      pc = this.pc;
+    } else {
+      pc = this.workerConns.get(connId)?.pc ?? null;
+      // A worker pc for a connId we don't recognize only ever means the
+      // *receiver* is hearing about a new parallel connection the sender
+      // just initiated — the sender always creates its own worker pcs
+      // itself (in negotiateWorkerConnection) before sending anything, so
+      // this lazy path is receiver-only.
+      if (!pc && this.role === "receiver") pc = this.createWorkerPcForReceiver(connId);
+    }
     if (!pc) return;
 
     if ("sdp" in data) {
@@ -596,12 +735,115 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         if (this.remotePeerId) {
-          this.signaling.sendSignal(this.roomId, { sdp: answer }, this.remotePeerId);
+          this.signaling.sendSignal(this.roomId, { sdp: answer, connId }, this.remotePeerId);
         }
       }
     } else if ("candidate" in data) {
       await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
     }
+  }
+
+  // ---- parallel worker connections ---------------------------------------
+
+  /** Receiver only: lazily creates the RTCPeerConnection for a parallel
+   * connection the sender just initiated (its offer is what triggers this,
+   * via handleSignal above). Its data channel arrives via ondatachannel,
+   * same shape as the primary but routed straight to handleIncomingChunk —
+   * worker channels never carry JSON control messages, only binary chunks. */
+  private createWorkerPcForReceiver(connId: number): RTCPeerConnection {
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const worker: WorkerConn = { connId, pc, channel: null };
+    this.workerConns.set(connId, worker);
+
+    pc.onicecandidate = (event) => {
+      if (!event.candidate || !this.remotePeerId) return;
+      this.signaling.sendSignal(
+        this.roomId,
+        { candidate: event.candidate.toJSON(), connId },
+        this.remotePeerId,
+      );
+    };
+    pc.ondatachannel = (event) => {
+      const channel = event.channel;
+      channel.binaryType = "arraybuffer";
+      worker.channel = channel;
+      channel.onmessage = (e) => this.handleIncomingChunk(e.data as ArrayBuffer);
+    };
+
+    return pc;
+  }
+
+  /** Sender only: negotiates up to PARALLEL_CONNECTIONS - 1 additional
+   * connections with the peer, for splitting large files across. Safe to
+   * call more than once — only the first call does anything, and it's
+   * cached for the rest of the batch (subsequent large files reuse
+   * whichever workers came up, same principle IDM uses: "reuse available
+   * connections without additional connect... stages"). Never throws or
+   * blocks the transfer — a worker that fails or times out just means one
+   * fewer parallel connection for this file, not a failed transfer. */
+  private async ensureWorkerConnections(): Promise<void> {
+    if (this.workerNegotiationStarted || this.role !== "sender" || !this.remotePeerId) return;
+    this.workerNegotiationStarted = true;
+
+    const connIds = Array.from({ length: PARALLEL_CONNECTIONS - 1 }, (_, i) => i + 1);
+    await Promise.allSettled(connIds.map((connId) => this.negotiateWorkerConnection(connId)));
+  }
+
+  private negotiateWorkerConnection(connId: number): Promise<void> {
+    return new Promise((resolve) => {
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const channel = pc.createDataChannel(`file-transfer-${connId}`, { ordered: true });
+      channel.binaryType = "arraybuffer";
+      channel.bufferedAmountLowThreshold = BUFFERED_AMOUNT_LOW_THRESHOLD;
+      const worker: WorkerConn = { connId, pc, channel };
+      this.workerConns.set(connId, worker);
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(finish, WORKER_CONNECT_TIMEOUT_MS);
+
+      channel.onopen = finish;
+      // Never opening (or erroring first) just leaves this connId unused —
+      // sendFileParallel only ever looks at channels that are actually open.
+      channel.onerror = finish;
+
+      pc.onicecandidate = (event) => {
+        if (!event.candidate || !this.remotePeerId) return;
+        this.signaling.sendSignal(
+          this.roomId,
+          { candidate: event.candidate.toJSON(), connId },
+          this.remotePeerId,
+        );
+      };
+
+      pc.createOffer()
+        .then((offer) => pc.setLocalDescription(offer).then(() => offer))
+        .then((offer) => {
+          if (this.remotePeerId) {
+            this.signaling.sendSignal(this.roomId, { sdp: offer, connId }, this.remotePeerId);
+          }
+        })
+        .catch(finish);
+    });
+  }
+
+  private computeSegments(fileSize: number, workerConnIds: number[]): FileSegment[] {
+    const connIds = [0, ...workerConnIds];
+    const n = connIds.length;
+    const base = Math.floor(fileSize / n);
+    const segments: FileSegment[] = [];
+    let start = 0;
+    for (let i = 0; i < n; i++) {
+      const end = i === n - 1 ? fileSize : start + base;
+      segments.push({ connId: connIds[i], start, end });
+      start = end;
+    }
+    return segments;
   }
 
   // ---- data channel -------------------------------------------------------
@@ -660,7 +902,17 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         case "file-start": {
           this.currentFileIndex = msg.index;
           this.fileStartCumulativeBytes = this.receivedBytesTotal;
-          const slot: ReceiveSlot = { writeQueue: Promise.resolve(), writable: null, fileHandle: null, chunks: [] };
+          const slot: ReceiveSlot = {
+            index: msg.index,
+            writeQueue: Promise.resolve(),
+            writable: null,
+            fileHandle: null,
+            buffer: null,
+            segments: msg.segments ?? null,
+            segmentReceived: new Map(),
+            fileEndSha256: null,
+            finished: false,
+          };
           slot.writeQueue = this.prepareFileTarget(msg.index, slot);
           this.currentSlot = slot;
           break;
@@ -672,14 +924,15 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
             currentFileIndex: msg.index,
             currentFileBytesTransferred: msg.bytesTransferred,
             currentFileTotalBytes: msg.totalBytes,
+            segments: msg.segments,
           });
           break;
         case "file-end": {
-          // Capture the slot synchronously — by the time this async call
-          // resolves, "file-start" for the next file may already have
-          // replaced this.currentSlot with a new one.
           const slot = this.currentSlot;
-          if (slot) this.pendingFileFinishes.push(this.finishCurrentFile(msg.index, msg.sha256, slot));
+          if (slot && slot.index === msg.index) {
+            slot.fileEndSha256 = msg.sha256;
+            this.maybeFinishFile(slot);
+          }
           break;
         }
         case "batch-end":
@@ -692,64 +945,99 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       return;
     }
 
-    const buffer = event.data as ArrayBuffer;
-    this.receivedBytesTotal += buffer.byteLength;
+    this.handleIncomingChunk(event.data as ArrayBuffer);
+  }
+
+  /** Shared by the primary channel and every worker channel — decodes the
+   * chunk's self-describing header and writes it to the right place
+   * regardless of which physical channel it arrived on. */
+  private handleIncomingChunk(rawBuffer: ArrayBuffer): void {
+    const { connId, position, payload } = decodeChunk(rawBuffer);
+    this.receivedBytesTotal += payload.byteLength;
 
     const slot = this.currentSlot;
     if (slot) {
-      slot.writeQueue = slot.writeQueue.then(() => {
-        if (slot.writable) return slot.writable.write(buffer);
-        slot.chunks.push(buffer);
-      });
+      slot.writeQueue = slot.writeQueue.then(() => this.writeAt(slot, position, payload));
+      slot.segmentReceived.set(connId, (slot.segmentReceived.get(connId) ?? 0) + payload.byteLength);
     }
 
     // Defensive: guarantee the UI shows a progress bar even if the local
     // "accept" status update ever raced with the first chunk arriving.
     if (this.status !== "transferring") this.setStatus("transferring");
 
+    if (slot) this.maybeFinishFile(slot);
+    this.sampleAndReportProgress(slot);
+  }
+
+  private async writeAt(slot: ReceiveSlot, position: number, payload: ArrayBuffer): Promise<void> {
+    if (slot.writable) {
+      await slot.writable.write({ type: "write", position, data: payload });
+    } else if (slot.buffer) {
+      slot.buffer.set(new Uint8Array(payload), position);
+    }
+  }
+
+  /** All bytes for the current file are in once the running total matches
+   * its known size — true regardless of how many connections it was split
+   * across, since every chunk writes to a distinct, non-overlapping
+   * position. Finishing needs both that AND the sha256 from "file-end",
+   * whichever of the two arrives second. */
+  private maybeFinishFile(slot: ReceiveSlot): void {
+    if (slot.finished || slot.fileEndSha256 === null) return;
+    const currentFileBytesTransferred = this.receivedBytesTotal - this.fileStartCumulativeBytes;
+    const currentFileTotalBytes = this.incomingFiles[slot.index]?.size ?? 0;
+    if (currentFileBytesTransferred < currentFileTotalBytes) return;
+
+    slot.finished = true;
+    this.pendingFileFinishes.push(this.finishCurrentFile(slot.index, slot.fileEndSha256, slot));
+  }
+
+  private sampleAndReportProgress(slot: ReceiveSlot | null): void {
+    const now = performance.now();
+    const shouldSample =
+      this.receiveLastSampleTime === 0 ||
+      now - this.receiveLastSampleTime >= 200 ||
+      this.receivedBytesTotal >= this.totalIncomingBytes;
+    if (!shouldSample) return;
+
+    const speedBps =
+      this.receiveLastSampleTime === 0
+        ? 0
+        : ((this.receivedBytesTotal - this.receiveLastSampleBytes) /
+            (now - this.receiveLastSampleTime)) *
+            1000 || 0;
+
     const currentFileBytesTransferred = this.receivedBytesTotal - this.fileStartCumulativeBytes;
     const currentFileTotalBytes = this.incomingFiles[this.currentFileIndex]?.size ?? 0;
+    const segments: SegmentProgress[] | undefined = slot?.segments?.map((seg) => ({
+      connId: seg.connId,
+      bytesTransferred: slot.segmentReceived.get(seg.connId) ?? 0,
+      totalBytes: seg.end - seg.start,
+    }));
+
+    this.reportProgress(
+      this.receivedBytesTotal,
+      this.totalIncomingBytes,
+      speedBps,
+      currentFileBytesTransferred,
+      currentFileTotalBytes,
+      segments,
+    );
 
     // Tells the sender how much of the current file has actually arrived
     // and been queued for writing on this end — distinct from the sender's
     // own view of its send progress, which only reflects what's been
     // handed to the RTCDataChannel locally, not confirmed received here.
-    const reportToSender = () => {
-      this.sendControl({
-        type: "receiver-progress",
-        index: this.currentFileIndex,
-        bytesTransferred: currentFileBytesTransferred,
-        totalBytes: currentFileTotalBytes,
-      });
-    };
+    this.sendControl({
+      type: "receiver-progress",
+      index: this.currentFileIndex,
+      bytesTransferred: currentFileBytesTransferred,
+      totalBytes: currentFileTotalBytes,
+      segments,
+    });
 
-    const now = performance.now();
-    if (this.receiveLastSampleTime === 0) {
-      this.receiveLastSampleTime = now;
-      this.receiveLastSampleBytes = this.receivedBytesTotal;
-      this.reportProgress(
-        this.receivedBytesTotal,
-        this.totalIncomingBytes,
-        0,
-        currentFileBytesTransferred,
-        currentFileTotalBytes,
-      );
-      reportToSender();
-    } else if (now - this.receiveLastSampleTime >= 200 || this.receivedBytesTotal >= this.totalIncomingBytes) {
-      const speedBps =
-        ((this.receivedBytesTotal - this.receiveLastSampleBytes) / (now - this.receiveLastSampleTime)) *
-          1000 || 0;
-      this.reportProgress(
-        this.receivedBytesTotal,
-        this.totalIncomingBytes,
-        speedBps,
-        currentFileBytesTransferred,
-        currentFileTotalBytes,
-      );
-      reportToSender();
-      this.receiveLastSampleTime = now;
-      this.receiveLastSampleBytes = this.receivedBytesTotal;
-    }
+    this.receiveLastSampleTime = now;
+    this.receiveLastSampleBytes = this.receivedBytesTotal;
   }
 
   /** Creates (and creates parent folders for) the write target for one
@@ -781,6 +1069,12 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       slot.writable = null;
       slot.fileHandle = null;
     }
+
+    if (!slot.writable) {
+      // Pre-sized so out-of-order/parallel writes can land at their
+      // absolute position, same as the disk path above.
+      slot.buffer = new Uint8Array(meta.size);
+    }
   }
 
   private async finishCurrentFile(index: number, expectedSha256: string, slot: ReceiveSlot): Promise<void> {
@@ -797,10 +1091,12 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       const buffer = await savedFile.arrayBuffer();
       const actualSha256 = await sha256Hex(buffer);
       verified = actualSha256 === expectedSha256;
-    } else {
-      const actualSha256 = await sha256Chunks(slot.chunks, meta.size);
+    } else if (slot.buffer) {
+      const actualSha256 = await sha256Hex(slot.buffer.buffer as ArrayBuffer);
       verified = actualSha256 === expectedSha256;
-      this.completedBlobs.push(new Blob(slot.chunks, { type: meta.mime }));
+      this.completedBlobs.push(new Blob([slot.buffer.buffer as ArrayBuffer], { type: meta.mime }));
+    } else {
+      verified = false;
     }
 
     this.completedResults.push({ meta, verified });
@@ -851,48 +1147,28 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       this.currentFileIndex = index;
       const { file } = this.files[index];
 
-      this.sendControl({ type: "file-start", index });
-      const hashPromise = sha256File(file);
-
-      let offset = 0;
-      let lastSampleTime = performance.now();
-      let lastSampleBytes = sentBytes;
-
-      while (offset < file.size) {
-        if (this.intentionallyClosed) return;
-
-        if (channel.readyState !== "open") {
-          // Paused mid-flight by a reconnect — resumes from this same
-          // offset once the channel (and ICE path) comes back.
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          continue;
-        }
-
-        if (channel.bufferedAmount > MAX_BUFFERED_AMOUNT) {
-          await this.waitForBufferedAmountLow(channel);
-          continue;
-        }
-
-        const buffer = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
-        try {
-          channel.send(buffer);
-        } catch {
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          continue;
-        }
-        offset += buffer.byteLength;
-
-        const now = performance.now();
-        const totalSoFar = sentBytes + offset;
-        if (now - lastSampleTime >= 200 || offset === file.size) {
-          const speedBps = ((totalSoFar - lastSampleBytes) / (now - lastSampleTime)) * 1000 || 0;
-          this.reportProgress(totalSoFar, totalBytes, speedBps, offset, file.size);
-          lastSampleTime = now;
-          lastSampleBytes = totalSoFar;
-        }
+      if (file.size >= PARALLEL_MIN_FILE_SIZE) {
+        await this.ensureWorkerConnections();
       }
 
+      const readyWorkerIds = Array.from(this.workerConns.values())
+        .filter((w) => w.channel?.readyState === "open")
+        .map((w) => w.connId);
+      const segments =
+        file.size >= PARALLEL_MIN_FILE_SIZE && readyWorkerIds.length > 0
+          ? this.computeSegments(file.size, readyWorkerIds)
+          : null;
+
+      this.sendControl({ type: "file-start", index, segments: segments ?? undefined });
+      const hashPromise = sha256File(file);
+
+      if (segments) {
+        await this.sendFileParallel(file, segments, sentBytes, totalBytes);
+      } else {
+        await this.sendFileSingle(file, channel, sentBytes, totalBytes);
+      }
       sentBytes += file.size;
+
       this.setStatus("verifying");
       const sha256 = await hashPromise;
       this.sendControl({ type: "file-end", index, sha256 });
@@ -901,6 +1177,128 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
 
     this.sendControl({ type: "batch-end" });
     this.setStatus("completed");
+  }
+
+  /** The original single-connection send path, used for files below
+   * PARALLEL_MIN_FILE_SIZE or when no worker connections came up. */
+  private async sendFileSingle(
+    file: File,
+    channel: RTCDataChannel,
+    sentBytesBefore: number,
+    totalBytes: number,
+  ): Promise<void> {
+    let offset = 0;
+    let lastSampleTime = performance.now();
+    let lastSampleBytes = sentBytesBefore;
+
+    while (offset < file.size) {
+      if (this.intentionallyClosed) return;
+
+      if (channel.readyState !== "open") {
+        // Paused mid-flight by a reconnect — resumes from this same
+        // offset once the channel (and ICE path) comes back.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+
+      if (channel.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+        await this.waitForBufferedAmountLow(channel);
+        continue;
+      }
+
+      const raw = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+      try {
+        channel.send(encodeChunk(0, offset, raw));
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        continue;
+      }
+      offset += raw.byteLength;
+
+      const now = performance.now();
+      const totalSoFar = sentBytesBefore + offset;
+      if (now - lastSampleTime >= 200 || offset === file.size) {
+        const speedBps = ((totalSoFar - lastSampleBytes) / (now - lastSampleTime)) * 1000 || 0;
+        this.reportProgress(totalSoFar, totalBytes, speedBps, offset, file.size);
+        lastSampleTime = now;
+        lastSampleBytes = totalSoFar;
+      }
+    }
+  }
+
+  /** Splits the file across `segments` and sends each range concurrently
+   * on its own connection. Every chunk carries its own absolute position
+   * (see encodeChunk), so a segment whose dedicated channel isn't open —
+   * never connected, or dropped mid-transfer — can safely hand its
+   * remaining bytes to the primary channel instead of stalling. */
+  private async sendFileParallel(
+    file: File,
+    segments: FileSegment[],
+    sentBytesBefore: number,
+    totalBytes: number,
+  ): Promise<void> {
+    const segmentOffsets = new Map<number, number>(segments.map((s) => [s.connId, 0]));
+    let lastSampleTime = performance.now();
+    let lastSampleBytes = sentBytesBefore;
+
+    const reportCombined = (force = false) => {
+      const now = performance.now();
+      if (!force && now - lastSampleTime < 200) return;
+      const fileBytesSoFar = segments.reduce((sum, s) => sum + (segmentOffsets.get(s.connId) ?? 0), 0);
+      const totalSoFar = sentBytesBefore + fileBytesSoFar;
+      const speedBps = ((totalSoFar - lastSampleBytes) / (now - lastSampleTime)) * 1000 || 0;
+      this.reportProgress(
+        totalSoFar,
+        totalBytes,
+        speedBps,
+        fileBytesSoFar,
+        file.size,
+        segments.map((s) => ({
+          connId: s.connId,
+          bytesTransferred: segmentOffsets.get(s.connId) ?? 0,
+          totalBytes: s.end - s.start,
+        })),
+      );
+      lastSampleTime = now;
+      lastSampleBytes = totalSoFar;
+    };
+
+    const sendSegment = async (segment: FileSegment): Promise<void> => {
+      const dedicatedChannel =
+        segment.connId === 0 ? this.channel : this.workerConns.get(segment.connId)?.channel ?? null;
+      let offset = 0;
+      const length = segment.end - segment.start;
+
+      while (offset < length) {
+        if (this.intentionallyClosed) return;
+
+        const channel = dedicatedChannel?.readyState === "open" ? dedicatedChannel : this.channel;
+        if (!channel || channel.readyState !== "open") {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
+        if (channel.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+          await this.waitForBufferedAmountLow(channel);
+          continue;
+        }
+
+        const absoluteStart = segment.start + offset;
+        const chunkEnd = Math.min(absoluteStart + CHUNK_SIZE, segment.end);
+        const raw = await file.slice(absoluteStart, chunkEnd).arrayBuffer();
+        try {
+          channel.send(encodeChunk(segment.connId, absoluteStart, raw));
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          continue;
+        }
+        offset += raw.byteLength;
+        segmentOffsets.set(segment.connId, offset);
+        reportCombined();
+      }
+    };
+
+    await Promise.all(segments.map(sendSegment));
+    reportCombined(true);
   }
 
   private waitForBufferedAmountLow(channel: RTCDataChannel): Promise<void> {
@@ -936,6 +1334,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     speedBps = 0,
     currentFileBytesTransferred = 0,
     currentFileTotalBytes = 0,
+    segments?: SegmentProgress[],
   ): void {
     const remaining = totalBytes - bytesTransferred;
     const etaSeconds = speedBps > 0 ? remaining / speedBps : null;
@@ -950,6 +1349,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       fileCount: this.role === "sender" ? this.files.length : this.incomingFiles.length,
       currentFileBytesTransferred,
       currentFileTotalBytes,
+      segments,
     });
   }
 

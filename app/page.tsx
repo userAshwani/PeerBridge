@@ -9,6 +9,7 @@ import { QRPanel } from "@/components/QRPanel";
 import { StatusPill } from "@/components/StatusPill";
 import { ProgressBar } from "@/components/ProgressBar";
 import { PartsProgress } from "@/components/PartsProgress";
+import { ParallelSegments } from "@/components/ParallelSegments";
 import { HeroIllustration } from "@/components/HeroIllustration";
 import { TransferAnimation } from "@/components/TransferAnimation";
 import { usePeerTransfer } from "@/hooks/usePeerTransfer";
@@ -151,17 +152,25 @@ export default function Home() {
                     )}
 
                     <div className="mt-4 flex flex-col gap-3">
-                      <PartsProgress
-                        label="Sending"
-                        bytesTransferred={progress.currentFileBytesTransferred}
-                        totalBytes={progress.currentFileTotalBytes}
-                      />
-                      {receiverProgress && receiverProgress.currentFileIndex === progress.currentFileIndex && (
+                      {progress.segments && progress.segments.length > 1 ? (
+                        <ParallelSegments label="Sending" segments={progress.segments} />
+                      ) : (
                         <PartsProgress
-                          label="Received by peer"
-                          bytesTransferred={receiverProgress.currentFileBytesTransferred}
-                          totalBytes={receiverProgress.currentFileTotalBytes}
+                          label="Sending"
+                          bytesTransferred={progress.currentFileBytesTransferred}
+                          totalBytes={progress.currentFileTotalBytes}
                         />
+                      )}
+                      {receiverProgress && receiverProgress.currentFileIndex === progress.currentFileIndex && (
+                        receiverProgress.segments && receiverProgress.segments.length > 1 ? (
+                          <ParallelSegments label="Received by peer" segments={receiverProgress.segments} />
+                        ) : (
+                          <PartsProgress
+                            label="Received by peer"
+                            bytesTransferred={receiverProgress.currentFileBytesTransferred}
+                            totalBytes={receiverProgress.currentFileTotalBytes}
+                          />
+                        )
                       )}
                     </div>
                   </div>

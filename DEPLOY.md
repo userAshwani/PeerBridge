@@ -147,7 +147,7 @@ cat > /etc/turnserver.conf <<'EOF'
 listening-port=3478
 tls-listening-port=5349
 min-port=49160
-max-port=49200
+max-port=49999
 
 external-ip=YOUR_VPS_IP
 
@@ -183,8 +183,8 @@ silently.
 ufw allow 22/tcp
 ufw allow 3478
 ufw allow 5349
-ufw allow 49160:49200/udp
-ufw allow 49160:49200/tcp
+ufw allow 49160:49999/udp
+ufw allow 49160:49999/tcp
 ufw reload
 ```
 
@@ -192,8 +192,15 @@ ufw reload
 reachable via hPanel, not SSH): hPanel → **VPS → your server →
 Firewall**. If a restrictive profile is attached, add rules allowing
 (source `0.0.0.0/0`): TCP+UDP `3478`, TCP+UDP `5349`, TCP+UDP
-`49160-49200`, and TCP `22` if it's locked to a specific IP (that
+`49160-49999`, and TCP `22` if it's locked to a specific IP (that
 would also block automated SSH deploys, see below).
+
+> **Why the relay port range is this wide**: the app can open several
+> parallel connections per large-file transfer (see the "Parallel
+> connections" note in [lib/webrtc.ts](lib/webrtc.ts)), each needing
+> its own relay allocation when TURN is in play — and several users
+> can be transferring at once. 840 ports gives real headroom for that
+> without needing to revisit it later.
 
 ### e. Test it, before touching the app
 

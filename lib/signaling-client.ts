@@ -15,9 +15,14 @@ export interface SignalingEvents {
   signal: { peerId: string; data: RTCSignalData };
 }
 
+// connId distinguishes which RTCPeerConnection a given SDP/candidate
+// belongs to when a transfer uses more than one in parallel (connId 0 is
+// always the primary connection, used for every transfer; 1+ are the
+// additional parallel connections used only for large files) — this
+// server never inspects it, just relays it opaquely.
 export type RTCSignalData =
-  | { sdp: RTCSessionDescriptionInit }
-  | { candidate: RTCIceCandidateInit };
+  | { sdp: RTCSessionDescriptionInit; connId: number }
+  | { candidate: RTCIceCandidateInit; connId: number };
 
 /**
  * Resolves the signaling WebSocket URL. Defaults to same-origin `/ws`
