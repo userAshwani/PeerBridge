@@ -321,13 +321,21 @@ a sanity check.
   (full-cone, restricted-cone); it cannot traverse symmetric NAT, which
   is common on cellular/carrier networks and many corporate firewalls.
   Two peers on genuinely different networks or countries hit this often
-  enough that without TURN, a real fraction of transfers will get stuck
-  showing "Connected" and never actually move data (the app now detects
-  this specific stuck state after ~18s and shows an error instead of
-  hanging silently — but a TURN server is the actual fix, not just
-  better error messaging).
+  enough that without TURN, a real fraction of transfers get stuck
+  showing "Connected" and never actually move data.
 
-  1. Sign up for a free TURN provider — [Metered.ca](https://www.metered.ca/tools/openrelay/) has a generous free tier and the simplest setup; Cloudflare Calls and Twilio also work.
+  [lib/webrtc.ts](lib/webrtc.ts)'s `ICE_SERVERS` now includes a TURN
+  fallback **by default**: when no custom TURN env vars are set, it uses
+  Metered's [Open Relay Project](https://www.metered.ca/tools/openrelay/)
+  — a TURN server published with fixed, intentionally public
+  credentials for exactly this purpose. This means cross-network
+  transfers work out of the box with no setup. It is, however, a
+  **shared, rate-limited, no-uptime-guarantee** resource — fine for
+  getting started or moderate use, not something to lean on at real
+  scale. For production reliability, get your own free-tier TURN
+  credentials and override the default:
+
+  1. Sign up at [Metered.ca](https://www.metered.ca/tools/openrelay/) (generous free tier, simplest setup) — or Cloudflare Calls / Twilio.
   2. From their dashboard, get a TURN URL (or comma-separated list of `turn:`/`turns:` URLs for UDP/TCP/TLS variants), a username, and a credential.
   3. Set three environment variables **on whichever host serves the frontend** (Vercel in Option C, or the single Render service in Option A/B — this is client-side WebRTC config, not backend):
      ```
@@ -335,13 +343,7 @@ a sanity check.
      NEXT_PUBLIC_TURN_USERNAME=<from the provider>
      NEXT_PUBLIC_TURN_CREDENTIAL=<from the provider>
      ```
-  4. **Redeploy.** `NEXT_PUBLIC_*` variables are inlined into the client bundle at `next build` time, not read at runtime — setting them without rebuilding does nothing.
-  5. [lib/webrtc.ts](lib/webrtc.ts)'s `ICE_SERVERS` picks these up automatically once set (falls back to STUN-only, today's behavior, if they're unset).
-
-  Without this, PeerBridge still works great for same-network or
-  friendly-NAT transfers (most home Wi-Fi, most same-country transfers)
-  — TURN specifically matters for the harder cases this product is
-  explicitly meant to handle ("global, international" use).
+  4. **Redeploy.** `NEXT_PUBLIC_*` variables are inlined into the client bundle at `next build` time, not read at runtime — setting them without rebuilding does nothing. Once set, these replace the public Open Relay fallback entirely.
 - A transfer survives brief network blips automatically: the sender
   pauses and resumes from the same byte offset, and a dropped
   `RTCPeerConnection` gets one automatic ICE-restart attempt before

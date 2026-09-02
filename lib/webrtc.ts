@@ -58,8 +58,29 @@ function buildIceServers(): RTCIceServer[] {
       .filter(Boolean);
     if (urls.length > 0) {
       servers.push({ urls, username: turnUsername, credential: turnCredential });
+      return servers;
     }
   }
+
+  // No dedicated TURN configured — fall back to Metered's "Open Relay
+  // Project" (openrelay.metered.ca), a TURN server Metered publishes with
+  // fixed, intentionally public credentials for exactly this use. It's
+  // shared/rate-limited with no uptime guarantee, not a substitute for a
+  // dedicated free-tier account under load — but it means cross-network
+  // transfers work out of the box instead of silently failing until
+  // someone configures NEXT_PUBLIC_TURN_*. See DEPLOY.md.
+  servers.push(
+    { urls: "stun:stun.relay.metered.ca:80" },
+    {
+      urls: [
+        "turn:global.relay.metered.ca:80",
+        "turn:global.relay.metered.ca:443",
+        "turns:global.relay.metered.ca:443",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  );
 
   return servers;
 }
