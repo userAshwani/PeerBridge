@@ -54,7 +54,16 @@ import { RTCSignalData, SignalingClient } from "./signaling-client";
 import { sha256File, sha256Hex } from "./sha256";
 import { DroppedFile } from "./collect-files";
 
-export const CHUNK_SIZE = 64 * 1024; // 64KB
+export const CHUNK_SIZE = 64 * 1024; // 64KB — the actual wire frame size, header included
+const CHUNK_HEADER_SIZE = 9; // 1 byte connId + 8 byte float64 position, see encodeChunk
+// The 9-byte position header rides inside the same 64KB frame budget that
+// worked before it existed — reading full 64KB of *payload* and adding the
+// header on top pushes every full-size frame to 65,545 bytes, past the
+// hard message-size ceiling some WebRTC stacks still default to (65,536,
+// a legacy pre-max-message-size-negotiation value). That silently failed
+// every channel.send() for any chunk this size, retried forever, and never
+// sent a byte — this constant is what actually gets read from the file.
+const PAYLOAD_SIZE = CHUNK_SIZE - CHUNK_HEADER_SIZE;
 const BUFFERED_AMOUNT_LOW_THRESHOLD = 1 * 1024 * 1024; // 1MB
 const MAX_BUFFERED_AMOUNT = 8 * 1024 * 1024; // pause sending above this
 const DISCONNECT_GRACE_MS = 6000; // tolerate brief ICE blips before restarting
@@ -1247,7 +1256,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         continue;
       }
 
-      const raw = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+      const raw = await file.slice(offset, offset + PAYLOAD_SIZE).arrayBuffer();
       try {
         channel.send(encodeChunk(0, offset, raw));
       } catch {
@@ -1325,7 +1334,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         }
 
         const absoluteStart = segment.start + offset;
-        const chunkEnd = Math.min(absoluteStart + CHUNK_SIZE, segment.end);
+        const chunkEnd = Math.min(absoluteStart + PAYLOAD_SIZE, segment.end);
         const raw = await file.slice(absoluteStart, chunkEnd).arrayBuffer();
         try {
           channel.send(encodeChunk(segment.connId, absoluteStart, raw));
