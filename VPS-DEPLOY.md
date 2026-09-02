@@ -21,6 +21,18 @@ transfer.ashwanitiwari.com  →  <your VPS public IP>
 (The same IP CloudPanel's own dashboard/sites list is running on.)
 Wait for it to resolve before continuing — `ping transfer.ashwanitiwari.com`.
 
+> **If `transfer.ashwanitiwari.com` was ever a Vercel domain**, Vercel
+> left behind its own DNS record for that exact subdomain (a `CNAME`
+> pointing at something like `*.vercel-dns.com`), and a specific
+> subdomain record always wins over a wildcard `*` record even if the
+> wildcard already points at your VPS. That leftover record is what
+> shows Vercel's `404: DEPLOYMENT_NOT_FOUND` page instead of your VPS.
+> Fix: in Hostinger hPanel → **DNS / Nameservers**, search "transfer",
+> find that record, and either delete it (the existing `*` wildcard, if
+> it already points to your VPS IP, then serves it automatically) or
+> edit it into a plain **A** record pointing at your VPS IP. Give it a
+> few minutes to propagate, then re-check.
+
 ## 2. Create the site in CloudPanel
 
 1. CloudPanel → **Sites → + ADD SITE → Create a Node.js Site**.
@@ -74,6 +86,13 @@ needed to build, not to run — same reason this was needed on Render.
    must match exactly, since that's what CloudPanel's Nginx proxies
    to.
    `pm2 startup` + `pm2 save` makes the app survive a VPS reboot.
+   `pm2 startup` prints one `sudo env PATH=... pm2 startup systemd ...`
+   command — copy-paste and run that too, then `pm2 save` once more.
+
+   If you ran `pm2 start` more than once while testing, run `pm2 list`
+   to confirm there's exactly **one** `peerbridge` process (status
+   `online`) — if you see duplicates, `pm2 delete <id>` the extras,
+   then `pm2 save` again so the saved process list matches.
 
 ## 5. Enable SSL
 
@@ -115,37 +134,54 @@ A GitHub Actions workflow is already committed at
 SSHes into the VPS and re-deploys on every push to `main`. To activate
 it:
 
-### a. Create a dedicated deploy key
+Do this entirely inside the **VPS SSH session you already have open**
+— no need to touch your PC at all, and the private key never has to
+leave the server except to paste it into GitHub once.
+
+### a. Generate a dedicated deploy key, on the VPS
 
 ```bash
-ssh-keygen -t ed25519 -C "github-deploy" -f deploy_key -N ""
+ssh-keygen -t ed25519 -C "github-deploy" -f ~/.ssh/github_deploy -N ""
 ```
 
-This makes two files: `deploy_key` (private) and `deploy_key.pub`
-(public).
-
-### b. Authorize it on the VPS
+### b. Authorize it for logins to this same account
 
 ```bash
-cat deploy_key.pub | ssh <site-user>@<your-vps-ip> "cat >> ~/.ssh/authorized_keys"
+cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
 ```
 
-### c. Add GitHub repo secrets
+### c. Print the private key and copy it
 
-GitHub repo → **Settings → Secrets and variables → Actions → New
-repository secret** — add all four:
+```bash
+cat ~/.ssh/github_deploy
+```
+
+Select and copy the **entire** output, including the
+`-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END...-----` lines.
+
+### d. Add GitHub repo secrets
+
+On github.com → your repo → **Settings → Secrets and variables →
+Actions → New repository secret** — add all four:
 
 | Secret | Value |
 |---|---|
 | `VPS_HOST` | your VPS IP |
-| `VPS_USER` | the CloudPanel site user |
-| `VPS_SSH_KEY` | the full contents of `deploy_key` (the private key) |
+| `VPS_USER` | `ashwanitiwari-transfer` (the site user) |
+| `VPS_SSH_KEY` | paste what you copied in step c |
 | `VPS_PORT` | `22` (unless you changed SSH's port) |
 
-### d. Done
+### e. Clean up the private key file on the VPS
+
+```bash
+rm ~/.ssh/github_deploy
+```
+
+Safe to delete — GitHub now holds the only copy it needs, and the
+public half is already in `authorized_keys`.
+
+### f. Done
 
 Push to `main` from any laptop/PC and GitHub Actions runs `git reset
 --hard origin/main`, rebuilds, and `pm2 restart peerbridge`
-automatically — check progress under the repo's **Actions** tab. Delete
-`deploy_key`/`deploy_key.pub` from your local machine once step c is
-done; only the VPS and GitHub need to hold onto them.
+automatically — check progress under the repo's **Actions** tab.
