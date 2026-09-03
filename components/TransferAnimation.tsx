@@ -1,4 +1,4 @@
-import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
+import { CheckCircle2, FileText, FolderCheck, FolderInput, FolderOutput, Loader2, ShieldCheck } from "lucide-react";
 import { TransferStatus } from "@/lib/webrtc";
 
 type Phase = "idle" | "active" | "verifying" | "done" | "paused";
@@ -24,23 +24,33 @@ export function TransferAnimation({ status }: { status: TransferStatus }) {
       <div className="absolute left-[14%] right-[14%] top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-zinc-200" />
 
       <div
-        className={`absolute left-[6%] top-1/2 h-11 w-11 -translate-y-1/2 rounded-2xl bg-brand-500 shadow-md transition-opacity ${
+        className={`absolute left-[6%] top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-2xl bg-brand-500 shadow-md transition-opacity ${
           phase === "paused" ? "opacity-40" : ""
         } ${phase === "idle" ? "animate-pulse" : ""}`}
-      />
+      >
+        <FolderOutput className="h-6 w-6 text-white" />
+      </div>
       <div
-        className={`absolute right-[6%] top-1/2 h-11 w-11 -translate-y-1/2 rounded-2xl bg-brand-700 shadow-md transition-opacity ${
+        className={`absolute right-[6%] top-1/2 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-2xl bg-brand-700 shadow-md transition-opacity ${
           phase === "paused" ? "opacity-40" : ""
         } ${phase === "idle" ? "animate-pulse" : ""}`}
-      />
+      >
+        {phase === "done" ? (
+          <FolderCheck className="h-6 w-6 text-white" />
+        ) : (
+          <FolderInput className="h-6 w-6 text-white" />
+        )}
+      </div>
 
       {showPackets &&
         PACKET_DELAYS.map((delay) => (
           <span
             key={delay}
-            className="animate-packet absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-brand-500 shadow-[0_0_6px_rgba(0,86,210,0.6)]"
+            className="animate-packet absolute top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md bg-white shadow-[0_0_6px_rgba(0,86,210,0.6)] ring-1 ring-brand-200"
             style={{ animationDelay: `${delay}s` }}
-          />
+          >
+            <FileText className="h-3 w-3 text-brand-600" />
+          </span>
         ))}
 
       <div className="absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-lg ring-1 ring-black/5">
