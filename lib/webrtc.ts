@@ -69,6 +69,11 @@ const MAX_BUFFERED_AMOUNT = 8 * 1024 * 1024; // pause sending above this
 const DISCONNECT_GRACE_MS = 6000; // tolerate brief ICE blips before restarting
 const RECONNECT_GIVEUP_MS = 30000; // fully fail if not back within this long
 const CONNECTED_STUCK_MS = 18000; // "connected" per ICE but no protocol progress
+// The receiver can't initiate a relay-forced retry itself (only the sender
+// can offer) — give it extra patience past CONNECTED_STUCK_MS so it isn't
+// the one to flash an error while the sender's retry (see setStatus) is
+// still in flight.
+const RECEIVER_STUCK_GRACE_MS = 20000;
 const PEER_LEFT_GRACE_MS = 6000; // tolerate a signaling blip before declaring the peer gone
 // status says "transferring" but no bytes have actually moved. Generous on
 // purpose: on a slow relayed path (e.g. India<->USA through the TURN
@@ -373,6 +378,11 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private transferStallTimer: ReturnType<typeof setTimeout> | null = null;
   private iceRestartInFlight = false;
   private intentionallyClosed = false;
+  /** Sender only: whether the one-shot relay-forced retry (see the
+   * "connected but stuck" handling in setStatus) has already been tried
+   * for this room session — never more than once, so a genuinely broken
+   * TURN server can't cause an infinite reconnect loop. */
+  private relayRetryAttempted = false;
 
   constructor(
     private readonly roomId: string,
@@ -388,6 +398,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   }
 
   connect(): void {
+    this.relayRetryAttempted = false;
     this.setStatus("connecting-signaling");
     this.signaling.on("open", () => {
       if (this.role === "sender") this.signaling.createRoom(this.roomId);
@@ -549,12 +560,20 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
 
   // ---- connection setup -------------------------------------------------
 
-  private preparePeerConnection(): RTCPeerConnection {
+  private preparePeerConnection(forceRelay = false): RTCPeerConnection {
     // A fresh pc means fresh negotiation — clear any timers tied to a
     // previous (now-abandoned) pc first, otherwise armGiveUpTimer()'s
     // "already armed" guard would skip arming one for this new attempt.
     this.clearTimers();
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({
+      iceServers: ICE_SERVERS,
+      // Skipping host/srflx candidates entirely forces TURN — used for the
+      // one-shot retry when a "connected" state never actually delivers
+      // data, which can happen when ICE nominates a direct/local candidate
+      // pair that looks fine per connectivity checks but is silently
+      // blocked (e.g. AP/client isolation on the same Wi-Fi network).
+      ...(forceRelay ? { iceTransportPolicy: "relay" as RTCIceTransportPolicy } : {}),
+    });
     this.pc = pc;
     this.candidateTypeCounts = {};
 
@@ -755,9 +774,9 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.closeWorkerConnections();
   }
 
-  private async initiateAsSender(): Promise<void> {
+  private async initiateAsSender(forceRelay = false): Promise<void> {
     this.setStatus("establishing-connection");
-    const pc = this.preparePeerConnection();
+    const pc = this.preparePeerConnection(forceRelay);
     const channel = pc.createDataChannel("file-transfer", { ordered: true });
     this.attachChannel(channel);
 
@@ -1437,19 +1456,58 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       this.connectedStuckTimer = null;
     }
     if (status === "connected") {
+      // The receiver can't initiate the retry below itself (only the
+      // sender can send a fresh offer) — give it extra time so it doesn't
+      // flash an error while a sender-side retry is still in flight.
+      const delay = this.role === "sender" ? CONNECTED_STUCK_MS : CONNECTED_STUCK_MS + RECEIVER_STUCK_GRACE_MS;
       this.connectedStuckTimer = setTimeout(() => {
         this.connectedStuckTimer = null;
-        if (this.status === "connected") {
-          this.emit("error", {
-            message:
-              "Connected, but no data is arriving — this usually means a strict NAT " +
-              "or firewall is blocking the direct link between these two networks and " +
-              "the relay (TURN) server isn't picking up the slack. This is a server-side " +
-              "configuration issue, not something you can fix on your end.",
+        if (this.status !== "connected" || this.intentionallyClosed) return;
+
+        // One-shot recovery attempt: a "connected" state that never
+        // delivers data often means ICE nominated a direct/local candidate
+        // pair that looks fine per connectivity checks but is silently
+        // blocked end-to-end (AP/client isolation on shared Wi-Fi is a
+        // common real cause) — forcing TURN-only on a fresh connection
+        // routes around that specific broken path instead of just erroring.
+        if (this.role === "sender" && !this.relayRetryAttempted && this.remotePeerId) {
+          this.relayRetryAttempted = true;
+          this.emit("notice", {
+            message: "Direct connection isn't delivering data — retrying through a relay server.",
           });
-          this.setStatus("error");
+          // Detach handlers before closing — close() fires "close"/state-
+          // change events asynchronously, and without this those stale
+          // events would land after initiateAsSender() below has already
+          // moved status past "connected", wrongly stomping it back down.
+          if (this.channel) {
+            this.channel.onopen = null;
+            this.channel.onclose = null;
+            this.channel.onerror = null;
+            this.channel.onmessage = null;
+            this.channel.close();
+          }
+          if (this.pc) {
+            this.pc.onconnectionstatechange = null;
+            this.pc.oniceconnectionstatechange = null;
+            this.pc.onicecandidate = null;
+            this.pc.ondatachannel = null;
+            this.pc.close();
+          }
+          this.channel = null;
+          this.pc = null;
+          void this.initiateAsSender(true);
+          return;
         }
-      }, CONNECTED_STUCK_MS);
+
+        this.emit("error", {
+          message:
+            "Connected, but no data is arriving — this usually means a strict NAT " +
+            "or firewall is blocking the link between these two networks, and the " +
+            "relay (TURN) server wasn't able to pick up the slack either. This is a " +
+            "server-side configuration issue, not something you can fix on your end.",
+        });
+        this.setStatus("error");
+      }, delay);
     }
 
     this.status = status;
