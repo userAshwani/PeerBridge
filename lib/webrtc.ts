@@ -70,7 +70,14 @@ const DISCONNECT_GRACE_MS = 6000; // tolerate brief ICE blips before restarting
 const RECONNECT_GIVEUP_MS = 30000; // fully fail if not back within this long
 const CONNECTED_STUCK_MS = 18000; // "connected" per ICE but no protocol progress
 const PEER_LEFT_GRACE_MS = 6000; // tolerate a signaling blip before declaring the peer gone
-const TRANSFER_STALL_MS = 15000; // status says "transferring" but no bytes have actually moved
+// status says "transferring" but no bytes have actually moved. Generous on
+// purpose: on a slow relayed path (e.g. India<->USA through the TURN
+// server), a single 64KB chunk can legitimately take a while to drain
+// through backpressure (waitForBufferedAmountLow) — that's slow, not
+// stalled, and this must not fire on it. Re-armed on genuine evidence of
+// progress from either side (see armTransferStallWatchdog call sites), not
+// just on completing a full chunk send.
+const TRANSFER_STALL_MS = 45000;
 
 // Parallel-connection ("download in parts") tuning. Each additional
 // connection is a full extra ICE negotiation and, when a direct path isn't
@@ -967,7 +974,10 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         }
         case "receiver-progress":
           // Sender side only: the receiver's own confirmed progress on the
-          // file it's currently receiving.
+          // file it's currently receiving. Independent proof real bytes are
+          // arriving at the other end, even if the local send loop is still
+          // mid-backpressure-wait on the next chunk — re-arm on it too.
+          this.armTransferStallWatchdog();
           this.emit("receiver-progress", {
             currentFileIndex: msg.index,
             currentFileBytesTransferred: msg.bytesTransferred,
@@ -1364,6 +1374,10 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       // awaiting it) unresolved forever.
       const onLow = () => {
         cleanup();
+        // The buffer actually draining is itself proof the network is
+        // moving data, even before the next chunk is built and sent — on a
+        // slow relayed path this can be the only signal for a while.
+        this.armTransferStallWatchdog();
         resolve();
       };
       const onClose = () => {
