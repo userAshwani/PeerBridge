@@ -458,7 +458,16 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       });
     });
 
-    this.signaling.on("error", ({ message }) => this.emit("error", { message }));
+    this.signaling.on("error", ({ message }) => {
+      // Same class of bug as the earlier "Data channel error on cancel"
+      // fix — an intentional cancel (or the session already ending) can
+      // still leave the signaling socket to close/error out on its own
+      // shortly after, and that's not a real failure worth surfacing.
+      if (this.intentionallyClosed || ["cancelled", "completed", "rejected", "closed"].includes(this.status)) {
+        return;
+      }
+      this.emit("error", { message });
+    });
 
     this.signaling.connect();
 
@@ -529,6 +538,11 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   cancel(): void {
     this.intentionallyClosed = true;
     this.signaling.sendCancel(this.roomId);
+    // Close the signaling socket too, not just the peer connection —
+    // otherwise it can sit there, notice the drop, try to reconnect, and
+    // fire a stray error well after the user already left. send() already
+    // queued the cancel message above; close() doesn't abort that.
+    this.signaling.close();
     this.teardownConnection();
     this.setStatus("cancelled");
   }
