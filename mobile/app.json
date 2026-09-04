@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "PeerBridge",
+    "slug": "PeerBridge-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "peerbridge",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ashwanitiwari.peerbridge",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to scan a QR code to join a file transfer.",
+        "NSMicrophoneUsageDescription": "Required by the WebRTC library even though this app never uses audio — no microphone data is ever captured or transmitted."
+      }
+    },
+    "android": {
+      "package": "com.ashwanitiwari.peerbridge",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to scan a QR code to join a file transfer."
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "80af4af4-a436-4b9b-9b14-459e5212c5b5"
+      }
+    },
+    "owner": "ashwani2000"
+  }
+}
