@@ -201,6 +201,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private currentFileIndex = -1;
   private targetDirectory: Directory | null = null;
   private receiveHandle: ReturnType<File["open"]> | null = null;
+  private receiveTargetFailed = false;
   private receiveFile: File | null = null;
   private receiveHasher: ReturnType<typeof createSha256Stream> | null = null;
   private fileEndSha256: string | null = null;
@@ -568,6 +569,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
           this.fileStartCumulativeBytes = this.receivedBytesTotal;
           this.fileEndSha256 = null;
           this.fileFinished = false;
+          this.receiveTargetFailed = false;
           this.receiveHasher = createSha256Stream();
           void this.prepareReceiveTarget(msg.index);
           break;
@@ -604,13 +606,27 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         file.create();
       }
       this.receiveFile = file;
-      this.receiveHandle = file.open(FileMode.ReadWrite);
+      // WriteOnly, not ReadWrite: the receiver only ever writes, and
+      // ReadWrite is documented as unsupported on SAF `content://` URIs
+      // (i.e. exactly a user-picked save folder) — using it here made
+      // every transfer into a picked folder fail immediately on the first
+      // chunk. WriteOnly still supports seeking (unlike Append), which is
+      // what position-addressed writes below need.
+      this.receiveHandle = file.open(FileMode.WriteOnly);
     } catch (err) {
+      this.receiveTargetFailed = true;
       this.emit("error", { message: `Couldn't create a file to save "${meta.name}": ${String(err)}` });
+      this.setStatus("error");
     }
   }
 
   private handleIncomingChunk(rawBuffer: Uint8Array): void {
+    // The destination file never opened — nothing would actually be saved,
+    // so don't keep counting bytes as if a real transfer were in progress
+    // (that previously just showed a misleading progress bar for a
+    // transfer that was silently going nowhere).
+    if (this.receiveTargetFailed) return;
+
     const { position, payload } = decodeChunk(rawBuffer);
     this.receivedBytesTotal += payload.byteLength;
     this.armTransferStallWatchdog();
@@ -621,7 +637,10 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
         this.receiveHandle.writeBytes(payload);
         this.receiveHasher?.update(payload);
       } catch (err) {
+        this.receiveTargetFailed = true;
         this.emit("error", { message: `Write failed: ${String(err)}` });
+        this.setStatus("error");
+        return;
       }
     }
 
