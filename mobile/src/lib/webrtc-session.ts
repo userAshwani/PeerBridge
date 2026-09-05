@@ -45,6 +45,14 @@ const CONNECTED_STUCK_MS = 18000;
 // still in flight.
 const RECEIVER_STUCK_GRACE_MS = 20000;
 const PEER_LEFT_GRACE_MS = 6000;
+/** Sender only: channel.send() succeeding locally is not proof the receiver
+ * ever got the message -- there's no ack for a data channel message
+ * itself. If no accept/reject comes back in this long, resend batch-meta
+ * rather than trust the first send arrived, and give up for good after
+ * BATCH_META_MAX_RETRIES with a real error instead of leaving the sender
+ * on "Awaiting response" forever with nothing to act on. */
+const BATCH_META_RETRY_MS = 4000;
+const BATCH_META_MAX_RETRIES = 5;
 /** Receiver only: how long to keep re-trying a room the server says
  * doesn't exist. The room is deleted the moment the sender's socket drops,
  * which on a phone mostly means "the sender's screen turned off" rather
@@ -256,6 +264,8 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private appStateSubscription: NativeEventSubscription | null = null;
   private roomRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private roomWaitStartedAt: number | null = null;
+  private batchMetaRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private batchMetaRetryCount = 0;
   /** Sender only: whether the one-shot relay-forced retry (see the
    * "connected but stuck" handling in setStatus) has already been tried
    * for this room session — never more than once, so a genuinely broken
@@ -509,6 +519,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.clearTransferStallWatchdog();
     this.clearPeerLeftGrace();
     this.clearRoomWait();
+    this.clearBatchMetaRetry();
   }
 
   private clearPeerLeftGrace(): void {
@@ -637,6 +648,12 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       const msg: DataChannelMessage = JSON.parse(event.data);
       switch (msg.type) {
         case "batch-meta":
+          // The sender resends this if it never hears back in time (see
+          // armBatchMetaRetry) — harmless if the receiver never got the
+          // first one, but must not re-arm here if they already responded
+          // (accepted and mid-transfer, or already finished): a resend
+          // arriving late would otherwise wipe the in-progress state.
+          if (this.transferActive || this.status === "completed") break;
           this.incomingFiles = msg.files;
           this.totalIncomingBytes = msg.files.reduce((sum, f) => sum + f.size, 0);
           this.receivedBytesTotal = 0;
@@ -648,10 +665,12 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
           this.emit("incoming-batch", { files: this.incomingFiles, totalBytes: this.totalIncomingBytes });
           break;
         case "accept":
+          this.clearBatchMetaRetry();
           this.transferActive = true;
           if (this.sendFile) void this.sendFileNow();
           break;
         case "reject":
+          this.clearBatchMetaRetry();
           this.setStatus("rejected");
           break;
         case "file-start":
@@ -819,12 +838,15 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
    * separate from the transfer itself and only usable once it's finished:
    * the picker backgrounds the app, which is harmless now but would break
    * a connection still being negotiated. One native copy, not a
-   * chunk-by-chunk rewrite. */
+   * chunk-by-chunk rewrite. Returns the copy's own URI (not the source
+   * file's, which copy() leaves pointing at the app's private storage) so
+   * callers can offer to open the actual saved file.
+   */
   async exportTo(directory: Directory): Promise<string> {
     const file = this.receiveFile;
     if (!file) throw new Error("There's no received file to save yet.");
     await file.copy(directory);
-    return directory.uri;
+    return new File(directory, file.name).uri;
   }
 
   getReceivedFile(): File | null {
@@ -842,7 +864,34 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private sendBatchMeta(): void {
     if (!this.sendFileMeta || !this.channel) return;
     this.setStatus("awaiting-accept");
+    this.batchMetaRetryCount = 0;
     this.sendControl({ type: "batch-meta", files: [this.sendFileMeta] });
+    this.armBatchMetaRetry();
+  }
+
+  private armBatchMetaRetry(): void {
+    if (this.batchMetaRetryTimer) clearTimeout(this.batchMetaRetryTimer);
+    this.batchMetaRetryTimer = setTimeout(() => {
+      this.batchMetaRetryTimer = null;
+      if (this.status !== "awaiting-accept" || this.intentionallyClosed) return;
+
+      if (this.batchMetaRetryCount >= BATCH_META_MAX_RETRIES) {
+        this.emit("error", {
+          message: "The receiver never responded — they may have lost their connection.",
+        });
+        this.setStatus("error");
+        return;
+      }
+
+      this.batchMetaRetryCount += 1;
+      if (this.sendFileMeta) this.sendControl({ type: "batch-meta", files: [this.sendFileMeta] });
+      this.armBatchMetaRetry();
+    }, BATCH_META_RETRY_MS);
+  }
+
+  private clearBatchMetaRetry(): void {
+    if (this.batchMetaRetryTimer) clearTimeout(this.batchMetaRetryTimer);
+    this.batchMetaRetryTimer = null;
   }
 
   private sendControl(msg: DataChannelMessage): void {

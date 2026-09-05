@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, StyleSheet, ScrollView, Share } from "react-native";
+import { View, StyleSheet, ScrollView, Share, Linking } from "react-native";
 import { Text, Button, TextInput, Card, IconButton, Banner, useTheme } from "react-native-paper";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Directory } from "expo-file-system";
 import { usePeerTransferSession } from "../lib/usePeerTransferSession";
+import { getSavedDirectory, setSavedDirectory } from "../lib/save-location";
 import { formatBytes } from "../lib/format";
 import { StatusChip } from "../components/StatusChip";
 import { TransferProgressView } from "../components/TransferProgressView";
 import type { RootStackParamList } from "../navigation/RootNavigator";
+
+const DOWNLOADS_SUBFOLDER = "PeerBridge";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Join">;
 
@@ -43,34 +46,79 @@ export function JoinScreen({ route, navigation }: Props) {
 
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedFileUri, setSavedFileUri] = useState<string | null>(null);
+  const [savedFolderUri, setSavedFolderUri] = useState<string | null>(null);
 
   const join = useCallback(() => {
     const trimmed = codeInput.trim().toUpperCase();
     if (trimmed) setRoomId(trimmed);
   }, [codeInput]);
 
-  // Deliberately no folder picker here: the transfer starts immediately.
-  // Opening the picker at this point pushed the app to the background right
-  // as the connection was being set up, which is what made the transfer
-  // drop the moment you chose where to save. Choosing a destination now
-  // happens after the file has arrived, where it can't break anything.
-  const handleSaveToDevice = useCallback(async () => {
-    setSaveError(null);
+  // Deliberately no folder picker while a transfer is in progress: the
+  // transfer starts immediately on accept. Opening the picker mid-
+  // handshake pushed the app to the background right as the connection
+  // was being set up, which is what made the transfer drop the moment a
+  // save location was chosen. Choosing a destination happens only once
+  // it can't break anything -- and only once, ever, per device: the
+  // folder is remembered (see save-location.ts) so every transfer after
+  // the first saves straight into a "PeerBridge" folder inside it with no
+  // picker and no button tap at all.
+  const saveReceivedFile = useCallback(
+    async (directory: Directory) => {
+      setSaveError(null);
+      setSaveState("saving");
+      try {
+        let folder = new Directory(directory, DOWNLOADS_SUBFOLDER);
+        if (!folder.exists) folder = directory.createDirectory(DOWNLOADS_SUBFOLDER);
+        const savedUri = await exportTo(folder);
+        setSavedFileUri(savedUri);
+        setSavedFolderUri(folder.uri);
+        setSaveState("saved");
+      } catch (err) {
+        setSaveState("idle");
+        setSaveError(`Couldn't save there: ${String(err)}`);
+      }
+    },
+    [exportTo],
+  );
+
+  // Runs automatically the moment a transfer completes: silent if a save
+  // folder is already remembered, otherwise nothing happens until the user
+  // taps "Choose folder" below (first time only, ever).
+  useEffect(() => {
+    if (!completed || saveState !== "idle") return;
+    const dir = getSavedDirectory();
+    if (dir) void saveReceivedFile(dir);
+  }, [completed, saveState, saveReceivedFile]);
+
+  const handleChooseFolder = useCallback(async () => {
     let dir: Directory;
     try {
       dir = await Directory.pickDirectoryAsync();
     } catch {
       return; // picker dismissed — file is still safe in the app's storage
     }
-    setSaveState("saving");
+    setSavedDirectory(dir);
+    await saveReceivedFile(dir);
+  }, [saveReceivedFile]);
+
+  const handleOpenFile = useCallback(async () => {
+    if (!savedFileUri) return;
     try {
-      await exportTo(dir);
-      setSaveState("saved");
-    } catch (err) {
-      setSaveState("idle");
-      setSaveError(`Couldn't save there: ${String(err)}`);
+      await Linking.openURL(savedFileUri);
+    } catch {
+      setSaveError("Couldn't open that file — try Share instead.");
     }
-  }, [exportTo]);
+  }, [savedFileUri]);
+
+  const handleOpenFolder = useCallback(async () => {
+    if (!savedFolderUri) return;
+    try {
+      await Linking.openURL(savedFolderUri);
+    } catch {
+      setSaveError("Couldn't open the folder — your file manager may not support this.");
+    }
+  }, [savedFolderUri]);
 
   const handleShare = useCallback(async () => {
     const file = receivedFile();
@@ -174,23 +222,36 @@ export function JoinScreen({ route, navigation }: Props) {
               </Text>
               <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: "center" }}>
                 {saveState === "saved"
-                  ? "Copied to the folder you chose."
-                  : "Saved in the app. Copy it anywhere on your device, or share it straight to another app."}
+                  ? `Saved to your ${DOWNLOADS_SUBFOLDER} folder.`
+                  : saveState === "saving"
+                    ? "Saving…"
+                    : "Choose a folder once — every file after this saves there automatically."}
               </Text>
             </Card.Content>
             <Card.Actions style={styles.completedActions}>
               <Button mode="outlined" icon="share-variant" onPress={handleShare}>
                 Share
               </Button>
-              <Button
-                mode="contained"
-                icon="content-save"
-                loading={saveState === "saving"}
-                disabled={saveState === "saving"}
-                onPress={handleSaveToDevice}
-              >
-                {saveState === "saved" ? "Save again" : "Save to device"}
-              </Button>
+              {saveState === "saved" ? (
+                <>
+                  <Button mode="outlined" icon="folder-open" onPress={handleOpenFolder}>
+                    Open folder
+                  </Button>
+                  <Button mode="contained" icon="file-eye" onPress={handleOpenFile}>
+                    Open file
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  mode="contained"
+                  icon="folder-outline"
+                  loading={saveState === "saving"}
+                  disabled={saveState === "saving"}
+                  onPress={handleChooseFolder}
+                >
+                  Choose folder
+                </Button>
+              )}
             </Card.Actions>
           </Card>
         )}

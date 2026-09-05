@@ -59,6 +59,12 @@ export function usePeerTransferSession(
     session.on("status", (s) => {
       setStatus(s);
       if (s !== "closed" && s !== "cancelled") setNoticeMessage(null);
+      // A status change means whatever produced the last error is over —
+      // without this, a stale error from an earlier failed attempt (e.g.
+      // the "connected but no data" watchdog) stayed on screen forever,
+      // stacked underneath a completely different, later status like
+      // "Closed", making it look like both were happening at once.
+      if (s !== "error") setErrorMessage(null);
     });
     session.on("progress", setProgress);
     session.on("incoming-batch", setIncomingBatch);
