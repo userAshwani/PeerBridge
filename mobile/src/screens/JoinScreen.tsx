@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, StyleSheet, ScrollView } from "react-native";
+import { View, StyleSheet, ScrollView, Share } from "react-native";
 import { Text, Button, TextInput, Card, IconButton, Banner, useTheme } from "react-native-paper";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -34,27 +34,53 @@ export function JoinScreen({ route, navigation }: Props) {
     completed,
     errorMessage,
     noticeMessage,
-    setTargetDirectory,
+    exportTo,
+    receivedFile,
     accept,
     reject,
     cancel,
   } = usePeerTransferSession(roomId, "receiver");
+
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const join = useCallback(() => {
     const trimmed = codeInput.trim().toUpperCase();
     if (trimmed) setRoomId(trimmed);
   }, [codeInput]);
 
-  const handleAccept = useCallback(async () => {
+  // Deliberately no folder picker here: the transfer starts immediately.
+  // Opening the picker at this point pushed the app to the background right
+  // as the connection was being set up, which is what made the transfer
+  // drop the moment you chose where to save. Choosing a destination now
+  // happens after the file has arrived, where it can't break anything.
+  const handleSaveToDevice = useCallback(async () => {
+    setSaveError(null);
+    let dir: Directory;
     try {
-      const dir = await Directory.pickDirectoryAsync();
-      setTargetDirectory(dir);
+      dir = await Directory.pickDirectoryAsync();
     } catch {
-      // User cancelled the folder picker — falls back to the app's own
-      // document directory (setTargetDirectory left at its null default).
+      return; // picker dismissed — file is still safe in the app's storage
     }
-    accept();
-  }, [accept, setTargetDirectory]);
+    setSaveState("saving");
+    try {
+      await exportTo(dir);
+      setSaveState("saved");
+    } catch (err) {
+      setSaveState("idle");
+      setSaveError(`Couldn't save there: ${String(err)}`);
+    }
+  }, [exportTo]);
+
+  const handleShare = useCallback(async () => {
+    const file = receivedFile();
+    if (!file) return;
+    try {
+      await Share.share({ url: file.uri, message: file.uri });
+    } catch {
+      // share sheet dismissed
+    }
+  }, [receivedFile]);
 
   if (!roomId) {
     return (
@@ -124,7 +150,7 @@ export function JoinScreen({ route, navigation }: Props) {
               <Button mode="outlined" onPress={reject}>
                 Decline
               </Button>
-              <Button mode="contained" onPress={handleAccept}>
+              <Button mode="contained" onPress={accept}>
                 Accept
               </Button>
             </Card.Actions>
@@ -146,13 +172,33 @@ export function JoinScreen({ route, navigation }: Props) {
               <Text variant="titleMedium">
                 {completed.files.every((f) => f.verified) ? "Transfer verified" : "Integrity check failed"}
               </Text>
-              {completed.savedTo && (
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: "center" }}>
-                  Saved to your chosen location
-                </Text>
-              )}
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: "center" }}>
+                {saveState === "saved"
+                  ? "Copied to the folder you chose."
+                  : "Saved in the app. Copy it anywhere on your device, or share it straight to another app."}
+              </Text>
             </Card.Content>
+            <Card.Actions style={styles.completedActions}>
+              <Button mode="outlined" icon="share-variant" onPress={handleShare}>
+                Share
+              </Button>
+              <Button
+                mode="contained"
+                icon="content-save"
+                loading={saveState === "saving"}
+                disabled={saveState === "saving"}
+                onPress={handleSaveToDevice}
+              >
+                {saveState === "saved" ? "Save again" : "Save to device"}
+              </Button>
+            </Card.Actions>
           </Card>
+        )}
+
+        {saveError && (
+          <Banner visible icon="alert-circle" style={[styles.banner, { backgroundColor: theme.colors.errorContainer }]}>
+            {saveError}
+          </Banner>
         )}
 
         {noticeMessage && (
@@ -189,4 +235,5 @@ const styles = StyleSheet.create({
   fileCard: { width: "100%", borderRadius: 16 },
   fileRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   banner: { width: "100%", borderRadius: 16, overflow: "hidden" },
+  completedActions: { justifyContent: "center", gap: 8, paddingBottom: 12 },
 });

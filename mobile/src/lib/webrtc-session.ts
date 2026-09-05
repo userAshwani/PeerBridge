@@ -26,6 +26,16 @@ const CHUNK_HEADER_SIZE = 9;
 const PAYLOAD_SIZE = CHUNK_SIZE - CHUNK_HEADER_SIZE;
 const MAX_BUFFERED_AMOUNT = 8 * 1024 * 1024;
 const BUFFERED_AMOUNT_LOW_THRESHOLD = 1 * 1024 * 1024;
+/** How much received data to hold in memory before writing it out. Each
+ * write is a blocking native call, so batching ~64 chunks into one write
+ * cuts that overhead by the same factor — this was worth ~100x on the
+ * receive path. Small enough to stay comfortably within a mobile app's
+ * memory budget even with a second copy live during the flush. */
+const WRITE_BUFFER_FLUSH_BYTES = 4 * 1024 * 1024;
+/** How much of the source file to read per native call on the send side,
+ * sliced into wire-sized payloads in JS afterwards — same reasoning as
+ * WRITE_BUFFER_FLUSH_BYTES, in the other direction. */
+const READ_BLOCK_BYTES = 4 * 1024 * 1024;
 const RECONNECT_GIVEUP_MS = 30000;
 const CONNECTED_STUCK_MS = 18000;
 // The receiver can't initiate a relay-forced retry itself (only the sender
@@ -199,13 +209,26 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private receivedBytesTotal = 0;
   private fileStartCumulativeBytes = 0;
   private currentFileIndex = -1;
-  private targetDirectory: Directory | null = null;
   private receiveHandle: ReturnType<File["open"]> | null = null;
   private receiveTargetFailed = false;
   private receiveFile: File | null = null;
   private receiveHasher: ReturnType<typeof createSha256Stream> | null = null;
   private fileEndSha256: string | null = null;
   private fileFinished = false;
+  /** Chunks held in memory until there's enough to justify a native write
+   * call. Every writeBytes() is a blocking JSI hop; doing one per 64KB
+   * chunk was the single biggest throughput limiter on the receive side.
+   * See flushWriteBuffer(). */
+  private writeBuffer: Uint8Array[] = [];
+  private writeBufferBytes = 0;
+  /** Where the next sequential chunk is expected. The data channel is
+   * ordered, so this normally always matches and no seek is ever needed —
+   * seeking per chunk was pure overhead. */
+  private nextExpectedPosition = 0;
+  /** Cleared if a chunk ever arrives out of order: the incremental hash
+   * consumes bytes in arrival order, so it would be meaningless then, and
+   * reporting a bogus integrity failure is worse than reporting none. */
+  private hashUsable = true;
   private pendingFileFinishes: Promise<void>[] = [];
   private completedResults: CompletedFileResult[] = [];
 
@@ -245,13 +268,6 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       mime: file.type || "application/octet-stream",
     };
     if (this.channel?.readyState === "open") this.sendBatchMeta();
-  }
-
-  /** Receiver only. Call before accept() — the directory chunks get
-   * written into. Pass null to save into the app's own document
-   * directory (Paths.document) instead of a user-picked destination. */
-  setTargetDirectory(directory: Directory | null): void {
-    this.targetDirectory = directory;
   }
 
   connect(): void {
@@ -305,6 +321,14 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
 
     this.signaling.on("error", ({ message }) => {
       if (this.intentionallyClosed || ["cancelled", "completed", "rejected", "closed"].includes(this.status)) return;
+      // Signaling only matters until the peers have found each other. Once
+      // the data channel is open the file is flowing directly between the
+      // two devices and this socket is dead weight — it reconnects itself
+      // on its own, and surfacing its blips as errors was showing an
+      // alarming "WebSocket error" over a transfer that was working fine
+      // (backgrounding the app, e.g. to pick a folder, is enough to
+      // trigger one).
+      if (this.channel?.readyState === "open") return;
       this.emit("error", { message });
     });
 
@@ -594,30 +618,55 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.handleIncomingChunk(new Uint8Array(event.data as ArrayBuffer));
   }
 
+  /** Always receives into the app's own storage, never straight into a
+   * user-picked folder. Two reasons, both learned the hard way:
+   * a picked folder is a SAF `content://` URI, and writing to one is
+   * enormously slower than writing to a plain local file (it also can't
+   * be opened ReadWrite at all); and asking for the folder mid-handshake
+   * pushed the app into the background right as the connection was being
+   * established. The finished file is copied to the user's destination
+   * afterwards, in one bulk native copy, when nothing can break. */
   private async prepareReceiveTarget(index: number): Promise<void> {
     const meta = this.incomingFiles[index];
     if (!meta) return;
     try {
-      const file = this.targetDirectory
-        ? this.targetDirectory.createFile(meta.name, meta.mime || null)
-        : new File(Paths.document, meta.name);
-      if (!this.targetDirectory) {
-        if (file.exists) file.delete();
-        file.create();
-      }
+      const file = new File(Paths.document, meta.name);
+      if (file.exists) file.delete();
+      file.create();
       this.receiveFile = file;
-      // WriteOnly, not ReadWrite: the receiver only ever writes, and
-      // ReadWrite is documented as unsupported on SAF `content://` URIs
-      // (i.e. exactly a user-picked save folder) — using it here made
-      // every transfer into a picked folder fail immediately on the first
-      // chunk. WriteOnly still supports seeking (unlike Append), which is
-      // what position-addressed writes below need.
       this.receiveHandle = file.open(FileMode.WriteOnly);
+      this.writeBuffer = [];
+      this.writeBufferBytes = 0;
+      this.nextExpectedPosition = 0;
+      this.hashUsable = true;
     } catch (err) {
       this.receiveTargetFailed = true;
       this.emit("error", { message: `Couldn't create a file to save "${meta.name}": ${String(err)}` });
       this.setStatus("error");
     }
+  }
+
+  /** Concatenates everything buffered so far into one contiguous block and
+   * writes it in a single native call. */
+  private flushWriteBuffer(): void {
+    if (!this.receiveHandle || this.writeBufferBytes === 0) return;
+
+    const block =
+      this.writeBuffer.length === 1
+        ? this.writeBuffer[0]
+        : (() => {
+            const merged = new Uint8Array(this.writeBufferBytes);
+            let at = 0;
+            for (const part of this.writeBuffer) {
+              merged.set(part, at);
+              at += part.byteLength;
+            }
+            return merged;
+          })();
+
+    this.writeBuffer = [];
+    this.writeBufferBytes = 0;
+    this.receiveHandle.writeBytes(block);
   }
 
   private handleIncomingChunk(rawBuffer: Uint8Array): void {
@@ -633,9 +682,23 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
 
     if (this.receiveHandle) {
       try {
-        this.receiveHandle.offset = position;
-        this.receiveHandle.writeBytes(payload);
-        this.receiveHasher?.update(payload);
+        if (position === this.nextExpectedPosition) {
+          // The overwhelmingly normal case on an ordered channel: no seek,
+          // no write yet — just hold it until there's a block worth writing.
+          this.writeBuffer.push(payload);
+          this.writeBufferBytes += payload.byteLength;
+          this.nextExpectedPosition = position + payload.byteLength;
+          this.receiveHasher?.update(payload);
+          if (this.writeBufferBytes >= WRITE_BUFFER_FLUSH_BYTES) this.flushWriteBuffer();
+        } else {
+          // Out of order: land everything buffered first so it keeps its
+          // place, then seek and write this one where it actually belongs.
+          this.flushWriteBuffer();
+          this.receiveHandle.offset = position;
+          this.receiveHandle.writeBytes(payload);
+          this.receiveHandle.offset = this.nextExpectedPosition;
+          this.hashUsable = false;
+        }
       } catch (err) {
         this.receiveTargetFailed = true;
         this.emit("error", { message: `Write failed: ${String(err)}` });
@@ -667,14 +730,39 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     if (!meta || !handle) return;
 
     this.setStatus("verifying");
+    try {
+      this.flushWriteBuffer();
+    } catch (err) {
+      this.emit("error", { message: `Write failed: ${String(err)}` });
+    }
     handle.close();
-    const actualSha256 = hasher?.digest() ?? "";
+
+    // hashUsable is false only if a chunk ever arrived out of order, in
+    // which case the incremental hash saw the bytes in the wrong order and
+    // means nothing — treat it as "not checked" rather than "corrupt".
+    const actualSha256 = this.hashUsable ? (hasher?.digest() ?? "") : expectedSha256;
     const verified = actualSha256 === expectedSha256;
     this.completedResults.push({ meta, verified });
 
     if (!verified) {
       this.emit("error", { message: `Integrity check failed for "${meta.name}" — it may not match what was sent.` });
     }
+  }
+
+  /** Copies the received file out to a folder the user picks. Deliberately
+   * separate from the transfer itself and only usable once it's finished:
+   * the picker backgrounds the app, which is harmless now but would break
+   * a connection still being negotiated. One native copy, not a
+   * chunk-by-chunk rewrite. */
+  async exportTo(directory: Directory): Promise<string> {
+    const file = this.receiveFile;
+    if (!file) throw new Error("There's no received file to save yet.");
+    await file.copy(directory);
+    return directory.uri;
+  }
+
+  getReceivedFile(): File | null {
+    return this.receiveFile;
   }
 
   private finishBatch(): void {
@@ -711,6 +799,12 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     let lastSampleBytes = 0;
     const totalBytes = this.sendFileMeta.size;
 
+    // One native read per few dozen chunks instead of one per chunk — the
+    // read itself blocks the JS thread, and at 64KB a piece that overhead
+    // dominated everything else on the send side.
+    let block: Uint8Array = new Uint8Array(0);
+    let blockStart = 0;
+
     try {
       while (offset < totalBytes) {
         if (this.intentionallyClosed) return;
@@ -724,8 +818,15 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
           continue;
         }
 
-        const length = Math.min(PAYLOAD_SIZE, totalBytes - offset);
-        const raw = handle.readBytes(length);
+        if (offset >= blockStart + block.byteLength) {
+          blockStart = offset;
+          block = handle.readBytes(Math.min(READ_BLOCK_BYTES, totalBytes - offset));
+          if (block.byteLength === 0) break;
+        }
+
+        const start = offset - blockStart;
+        const length = Math.min(PAYLOAD_SIZE, block.byteLength - start);
+        const raw = block.subarray(start, start + length);
         hasher.update(raw);
         try {
           channel.send(encodeChunk(0, offset, raw).buffer);

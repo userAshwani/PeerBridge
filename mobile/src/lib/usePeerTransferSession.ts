@@ -17,7 +17,10 @@ export interface UsePeerTransferSessionResult {
   errorMessage: string | null;
   noticeMessage: string | null;
   setFile: (file: File) => void;
-  setTargetDirectory: (dir: Directory | null) => void;
+  /** Copies the finished file out to a folder the user picks. Only
+   * meaningful once the transfer has completed — see PeerTransferSession.exportTo. */
+  exportTo: (dir: Directory) => Promise<string>;
+  receivedFile: () => File | null;
   accept: () => void;
   reject: () => void;
   cancel: () => void;
@@ -78,7 +81,12 @@ export function usePeerTransferSession(
     errorMessage,
     noticeMessage,
     setFile: (file) => sessionRef.current?.setFile(file),
-    setTargetDirectory: (dir) => sessionRef.current?.setTargetDirectory(dir),
+    exportTo: async (dir) => {
+      const session = sessionRef.current;
+      if (!session) throw new Error("There's no received file to save yet.");
+      return session.exportTo(dir);
+    },
+    receivedFile: () => sessionRef.current?.getReceivedFile() ?? null,
     accept: () => void sessionRef.current?.accept(),
     reject: () => sessionRef.current?.reject(),
     cancel: () => sessionRef.current?.cancel(),
