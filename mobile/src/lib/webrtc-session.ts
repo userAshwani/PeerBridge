@@ -15,6 +15,7 @@
 //   Binary chunk framing: 1 byte connId + 8 byte float64 big-endian
 //     position + raw payload (see encodeChunk/decodeChunk below).
 
+import { AppState, type NativeEventSubscription } from "react-native";
 import { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from "react-native-webrtc";
 import { File, Directory, Paths, FileMode } from "expo-file-system";
 import { SignalingClient, RTCSignalData } from "./signaling-client";
@@ -44,6 +45,13 @@ const CONNECTED_STUCK_MS = 18000;
 // still in flight.
 const RECEIVER_STUCK_GRACE_MS = 20000;
 const PEER_LEFT_GRACE_MS = 6000;
+/** Receiver only: how long to keep re-trying a room the server says
+ * doesn't exist. The room is deleted the moment the sender's socket drops,
+ * which on a phone mostly means "the sender's screen turned off" rather
+ * than "the code is wrong" — so this is a waiting game, not an error,
+ * until the sender has had a fair chance to come back. */
+const ROOM_WAIT_GIVEUP_MS = 90000;
+const ROOM_RETRY_INTERVAL_MS = 3000;
 const TRANSFER_STALL_MS = 45000;
 
 // Mirrors the web app's lib/webrtc.ts buildIceServers() exactly, including
@@ -245,6 +253,9 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   private transferStallTimer: ReturnType<typeof setTimeout> | null = null;
   private iceRestartInFlight = false;
   private intentionallyClosed = false;
+  private appStateSubscription: NativeEventSubscription | null = null;
+  private roomRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private roomWaitStartedAt: number | null = null;
   /** Sender only: whether the one-shot relay-forced retry (see the
    * "connected but stuck" handling in setStatus) has already been tried
    * for this room session — never more than once, so a genuinely broken
@@ -278,6 +289,21 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       else this.signaling.joinRoom(this.roomId);
     });
 
+    // The room lives on the server only for as long as the sender's socket
+    // is open (server/signaling.js deletes it in ws.on("close")). Android
+    // suspends a backgrounded app and its socket goes with it — which
+    // happens constantly here: the screen times out while you pick up the
+    // other phone, or you switch to WhatsApp to share the link. The room
+    // then vanishes and the receiver is told the code doesn't exist, while
+    // the sender sits on "Connecting…" behind a backoff timer that was
+    // frozen along with the app. Forcing a reconnect the moment we're
+    // foregrounded re-creates the room immediately. This mirrors the web
+    // app's visibilitychange handler (lib/webrtc.ts), which mobile needs
+    // far more than the web ever did.
+    this.appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active" && !this.intentionallyClosed) this.signaling.reconnectNow();
+    });
+
     this.signaling.on("room-created", () => this.setStatus("waiting-for-peer"));
 
     this.signaling.on("peer-joined", ({ peerId }) => {
@@ -288,6 +314,7 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
 
     this.signaling.on("room-joined", ({ senderId }) => {
       this.clearPeerLeftGrace();
+      this.clearRoomWait();
       this.remotePeerId = senderId;
       this.setStatus("establishing-connection");
       this.preparePeerConnection();
@@ -329,6 +356,10 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
       // (backgrounding the app, e.g. to pick a folder, is enough to
       // trigger one).
       if (this.channel?.readyState === "open") return;
+      if (this.role === "receiver" && /room not found/i.test(message)) {
+        this.waitForRoom();
+        return;
+      }
       this.emit("error", { message });
     });
 
@@ -358,6 +389,8 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
   destroy(): void {
     this.intentionallyClosed = true;
     this.clearTimers();
+    this.appStateSubscription?.remove();
+    this.appStateSubscription = null;
     this.signaling.leaveRoom();
     this.signaling.close();
     this.channel?.close?.();
@@ -475,11 +508,44 @@ export class PeerTransferSession extends Emitter<TransferEvents> {
     this.connectedStuckTimer = null;
     this.clearTransferStallWatchdog();
     this.clearPeerLeftGrace();
+    this.clearRoomWait();
   }
 
   private clearPeerLeftGrace(): void {
     if (this.peerLeftGraceTimer) clearTimeout(this.peerLeftGraceTimer);
     this.peerLeftGraceTimer = null;
+  }
+
+  private clearRoomWait(): void {
+    if (this.roomRetryTimer) clearTimeout(this.roomRetryTimer);
+    this.roomRetryTimer = null;
+    this.roomWaitStartedAt = null;
+  }
+
+  /** Receiver only: the server says there's no such room. Usually that
+   * means the sender's app is backgrounded rather than that the code is
+   * wrong, so keep asking for a while and say so plainly, instead of
+   * dead-ending on an error the user can't act on. */
+  private waitForRoom(): void {
+    if (this.roomWaitStartedAt === null) this.roomWaitStartedAt = Date.now();
+
+    if (Date.now() - this.roomWaitStartedAt >= ROOM_WAIT_GIVEUP_MS) {
+      this.clearRoomWait();
+      this.emit("error", { message: "Room not found — this code doesn't exist or has expired." });
+      this.setStatus("error");
+      return;
+    }
+
+    this.emit("notice", {
+      message: "Waiting for the sender to come back online — ask them to reopen PeerBridge on their phone.",
+    });
+
+    if (this.roomRetryTimer) return;
+    this.roomRetryTimer = setTimeout(() => {
+      this.roomRetryTimer = null;
+      if (this.intentionallyClosed || this.roomWaitStartedAt === null) return;
+      this.signaling.joinRoom(this.roomId);
+    }, ROOM_RETRY_INTERVAL_MS);
   }
 
   private armTransferStallWatchdog(): void {
