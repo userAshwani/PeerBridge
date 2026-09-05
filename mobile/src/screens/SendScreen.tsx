@@ -20,23 +20,18 @@ export function SendScreen() {
   const [copied, setCopied] = useState(false);
   const roomId = useMemo(() => (file ? generateRoomCode() : null), [file]);
 
-  const { status, progress, errorMessage, noticeMessage, setFile: pushFile, cancel } = usePeerTransferSession(
-    roomId,
-    "sender",
-  );
+  const { status, progress, errorMessage, noticeMessage, cancel } = usePeerTransferSession(roomId, "sender", file);
 
   const shareUrl = roomId ? `${WEB_APP_URL}/join/${roomId}` : "";
 
   const pickFile = useCallback(async () => {
     const picked = await File.pickFileAsync();
     if (picked.canceled) return;
+    // The hook registers this file on the session itself, synchronously,
+    // the instant it creates the session for the new roomId — no
+    // separately-timed hand-off needed.
     setFile(picked.result);
-    // pushFile targets the session created by the *next* render (roomId
-    // only becomes non-null once `file` state above updates), so defer
-    // one tick — mirrors the same pattern the web app uses for the same
-    // reason (hooks/usePeerTransfer.ts + app/page.tsx).
-    queueMicrotask(() => pushFile(picked.result));
-  }, [pushFile]);
+  }, []);
 
   const copyLink = useCallback(async () => {
     await Clipboard.setStringAsync(shareUrl);
