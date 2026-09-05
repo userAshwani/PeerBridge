@@ -12,6 +12,7 @@
     "expo-document-picker": "~57.0.1",
     "expo-file-system": "~57.0.6",
     "expo-font": "~57.0.3",
+    "expo-keep-awake": "~57.0.1",
     "expo-linking": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "js-sha256": "^1.0.0",

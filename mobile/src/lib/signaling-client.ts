@@ -97,8 +97,20 @@ export class SignalingClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  private isConnecting(): boolean {
+    return this.ws?.readyState === WebSocket.CONNECTING;
+  }
+
   reconnectNow(): void {
-    if (this.intentionalClose || this.isOpen()) return;
+    // Also skip while a connection attempt is already in flight, not just
+    // once one has already succeeded — without this, a reconnect request
+    // arriving mid-handshake (e.g. an AppState transition firing at the
+    // exact moment the very first connect() call is still connecting)
+    // opened a second, fully redundant socket. Both then completed and
+    // both sent create-room for the same roomId, and the server correctly
+    // rejected the second as a duplicate ("Room already has a sender") --
+    // the app was racing against itself, not hitting a real conflict.
+    if (this.intentionalClose || this.isOpen() || this.isConnecting()) return;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

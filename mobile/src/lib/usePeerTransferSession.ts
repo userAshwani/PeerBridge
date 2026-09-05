@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import type { File, Directory } from "expo-file-system";
 import {
   CompletedTransfer,
@@ -65,11 +66,26 @@ export function usePeerTransferSession(
     session.on("error", ({ message }) => setErrorMessage(message));
     session.on("notice", ({ message }) => setNoticeMessage(message));
 
+    // Keeps the screen (and with it, the app itself — Android suspends a
+    // screen-off app the same as a backgrounded one) from idling out mid-
+    // transfer. This is a real, common failure mode, not an edge case: a
+    // 5-second screen timeout is shorter than almost any transfer, and it
+    // was hitting both the sender (killing an in-progress send after 45s
+    // of silence) and the receiver ("the sender disconnected") in exactly
+    // the way reported. Not a substitute for a proper Android foreground
+    // service — this doesn't help once the user actually switches to a
+    // different app — but it fixes the far more common "phone just went
+    // to sleep on its own" case for free, with an official, actively
+    // maintained Expo module.
+    const keepAwakeTag = `peerbridge-transfer-${roomId}`;
+    void activateKeepAwakeAsync(keepAwakeTag);
+
     session.connect();
 
     return () => {
       session.destroy();
       sessionRef.current = null;
+      deactivateKeepAwake(keepAwakeTag);
     };
   }, [roomId, role, initialFile]);
 
