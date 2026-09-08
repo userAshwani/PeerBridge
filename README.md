@@ -1,4 +1,4 @@
-# PeerBridge
+# PeerBridge Using WebRTC (Sample Practice)
 
 Zero-cloud, ephemeral peer-to-peer file transfer. Files never touch a
 server — they stream directly between two browsers over an
