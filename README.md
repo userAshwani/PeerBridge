@@ -256,3 +256,10 @@ PeerBridge is designed for direct browser-to-browser file transfer using WebRTC 
 - Improved transfer reliability
 - Better mobile browser support
 - Enhanced connection diagnostics
+
+
+## Deployment
+
+PeerBridge can be deployed using Docker, Nginx, or a Node.js-compatible hosting environment.
+
+For production deployments, configure environment variables, HTTPS, and WebSocket support.
