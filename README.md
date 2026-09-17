@@ -245,3 +245,14 @@ step-by-step in [DEPLOY.md](DEPLOY.md).
 - Progress is currently shown per-file (percent, speed, ETA), not
   broken into sub-file "parts" with individual completion status —
   see the open discussion on that below.
+
+
+## Development Notes
+
+PeerBridge is designed for direct browser-to-browser file transfer using WebRTC technology.
+
+### Future Improvements
+
+- Improved transfer reliability
+- Better mobile browser support
+- Enhanced connection diagnostics
